@@ -22,7 +22,7 @@ const corsOptions = {
 app.use(cors(corsOptions));
 
 // Endpoint to serve image metadata
-app.get('/images/metadata', (req, res) => {
+app.get('/metadata', (req, res) => {
     try {
         const files = fs.readdirSync(IMAGES_DIR);
         const imageFiles = files.filter((file) => /\.(jpe?g|png|gif)$/i.test(file));
