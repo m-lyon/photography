@@ -1,5 +1,4 @@
 import { useState } from 'react';
-import React from 'react';
 import PhotoAlbum from 'react-photo-album';
 
 import Lightbox from 'yet-another-react-lightbox';
