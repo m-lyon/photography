@@ -33,11 +33,19 @@ app.get('/metadata', (req, res) => {
                 src: `${DOMAIN}/images/${file}`,
                 width: dimensions.width,
                 height: dimensions.height,
+                // srcSet: [
+                //     {
+                //         src: `${DOMAIN}/images/${file}`,
+                //         width: dimensions.width,
+                //         height: dimensions.height,
+                //     },
+                // ],
             };
         });
 
         res.json(imagesMetadata);
     } catch (error) {
+        console.log(error);
         res.status(500).send('Error reading image metadata');
     }
 });
@@ -58,7 +66,6 @@ if (NODE_ENV === 'development') {
     };
     server = https.createServer(options, app);
 }
-
 server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
