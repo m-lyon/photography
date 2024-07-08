@@ -27,23 +27,27 @@ app.get('/metadata', (req, res) => {
         const files = fs.readdirSync(IMAGES_DIR);
         const imageFiles = files.filter((file) => /\.(jpe?g|png|gif)$/i.test(file));
         const imagesMetadata = imageFiles.map((file) => {
-            const filePath = path.join(IMAGES_DIR, file);
-            const dimensions = sizeOf(filePath);
-            return {
-                src: `${DOMAIN}/images/${file}`,
-                width: dimensions.width,
-                height: dimensions.height,
-                // srcSet: [
-                //     {
-                //         src: `${DOMAIN}/images/${file}`,
-                //         width: dimensions.width,
-                //         height: dimensions.height,
-                //     },
-                // ],
-            };
+            try {
+                const filePath = path.join(IMAGES_DIR, file);
+                const dimensions = sizeOf(filePath);
+                return {
+                    src: `${DOMAIN}/images/${file}`,
+                    width: dimensions.width,
+                    height: dimensions.height,
+                    // srcSet: [
+                    //     {
+                    //         src: `${DOMAIN}/images/${file}`,
+                    //         width: dimensions.width,
+                    //         height: dimensions.height,
+                    //     },
+                    // ],
+                };
+            } catch (error) {
+                console.log(`Error reading metadata for ${file}:`);
+                return undefined;
+            }
         });
-
-        res.json(imagesMetadata);
+        res.json(imagesMetadata.filter((metadata) => metadata));
     } catch (error) {
         console.log(error);
         res.status(500).send('Error reading image metadata');
