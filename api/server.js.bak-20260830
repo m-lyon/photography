@@ -70,6 +70,6 @@ if (NODE_ENV === 'development') {
     };
     server = https.createServer(options, app);
 }
-server.listen(PORT, '127.0.0.1', () => {
+server.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
