@@ -13,6 +13,7 @@ import 'yet-another-react-lightbox/plugins/thumbnails.css';
 
 // import photos from './photos.ts';
 import { useGetPhotos } from './useGetPhotos.tsx';
+import { BlurUpPhoto } from './BlurUpPhoto.tsx';
 
 export default function App() {
     const [index, setIndex] = useState(-1);
@@ -26,6 +27,12 @@ export default function App() {
                 layout='rows'
                 onClick={({ index }) => setIndex(index)}
                 spacing={10}
+                // Album width: #root is capped at 1280px with 2rem padding each side
+                sizes={{
+                    size: '1280px',
+                    sizes: [{ viewport: '(max-width: 1344px)', size: 'calc(100vw - 4rem)' }],
+                }}
+                renderPhoto={(props) => <BlurUpPhoto {...props} />}
             />
             <Lightbox
                 slides={photos}
