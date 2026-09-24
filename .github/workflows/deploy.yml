@@ -1,0 +1,87 @@
+name: Deploy
+
+on:
+    push:
+        branches: [main]
+    workflow_dispatch:
+
+concurrency:
+    group: deploy
+    cancel-in-progress: false
+
+env:
+    NODE_VERSION: 22
+    REMOTE_USER: deploy-photography
+    API_TARGET: /srv/photography/
+    CLIENT_TARGET: /var/www/photos/
+
+jobs:
+    deploy:
+        # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
+        runs-on: ubuntu-22.04
+        environment: production
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup node
+              uses: actions/setup-node@v4
+              with:
+                  node-version: ${{ env.NODE_VERSION }}
+
+            - name: Build client
+              working-directory: ./client
+              env:
+                  VITE_METADATA_ENDPOINT: /images-api/metadata
+              run: |
+                  npm ci
+                  npm run build
+
+            - name: Install API production dependencies
+              working-directory: ./api
+              run: npm ci --omit=dev
+
+            - name: Configure SSH
+              env:
+                  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+                  SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+              run: |
+                  install -m 700 -d ~/.ssh
+                  printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+                  printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+                  chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+                  cat > ~/.ssh/config <<EOF
+                  Host deploy-target
+                      HostName ${{ secrets.REMOTE_HOST }}
+                      Port ${{ secrets.REMOTE_PORT }}
+                      User ${{ env.REMOTE_USER }}
+                      IdentityFile ~/.ssh/deploy_key
+                      IdentitiesOnly yes
+                      StrictHostKeyChecking yes
+                  EOF
+
+            # Files land group-readable by svc-photography via the setgid target directory.
+            # The service can read its code but not modify it.
+            - name: Deploy API
+              run: >
+                  rsync -rlt --delete --chmod=D2750,F0640
+                  --include='server.js' --include='imageCache.js'
+                  --include='package.json' --include='package-lock.json'
+                  --include='node_modules/***' --exclude='*'
+                  ./api/ deploy-target:${{ env.API_TARGET }}
+
+            - name: Deploy client
+              run: rsync -rlt --delete --chmod=D755,F644 ./client/dist/ deploy-target:${{ env.CLIENT_TARGET }}
+
+            - name: Restart API
+              run: ssh deploy-target sudo -n /usr/bin/systemctl restart photography.service
+
+            - name: Health check
+              run: |
+                  for i in 1 2 3 4 5 6; do
+                      sleep 5
+                      code=$(curl -s -o /dev/null -w '%{http_code}' https://photos.mattlyon.co.uk/images-api/metadata)
+                      echo "attempt $i: $code"
+                      [ "$code" = 200 ] && exit 0
+                  done
+                  exit 1

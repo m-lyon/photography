@@ -10,3 +10,14 @@ returns them as a `srcSet` from `/metadata`, so the gallery only downloads the s
 - New, replaced and deleted photos are picked up automatically while the server is running.
 - Generating the variants is a one-off cost of a few seconds per photo; photos are served at
   full size until their variants are ready.
+
+## Deployment
+Pushing to `main` runs `.github/workflows/deploy.yml`, which builds the client and API on
+Ubuntu 22.04 and deploys them to the server as the `deploy-photography` account:
+
+- API code to `/srv/photography`, run by the sandboxed `photography.service` as `svc-photography`.
+- Client to `/var/www/photos`, served by nginx at https://photos.mattlyon.co.uk.
+
+Runtime configuration lives on the server in `/etc/photography.env`, not in the repository or CI.
+The workflow needs these `production` environment secrets: `SSH_PRIVATE_KEY`, `SSH_KNOWN_HOSTS`,
+`REMOTE_HOST` and `REMOTE_PORT`.
