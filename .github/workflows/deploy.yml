@@ -10,7 +10,6 @@ concurrency:
     cancel-in-progress: false
 
 env:
-    NODE_VERSION: 22
     REMOTE_USER: deploy-photography
     API_TARGET: /srv/photography/
     CLIENT_TARGET: /var/www/photos/
@@ -27,7 +26,8 @@ jobs:
             - name: Setup node
               uses: actions/setup-node@v4
               with:
-                  node-version: ${{ env.NODE_VERSION }}
+                  # Same pinned version the server runs, via nvm-exec reading the deployed .nvmrc.
+                  node-version-file: .nvmrc
 
             - name: Build client
               working-directory: ./client
@@ -39,7 +39,9 @@ jobs:
 
             - name: Install API production dependencies
               working-directory: ./api
-              run: npm ci --omit=dev
+              run: |
+                  npm ci --omit=dev
+                  cp ../.nvmrc .nvmrc
 
             - name: Configure SSH
               env:
@@ -60,12 +62,20 @@ jobs:
                       StrictHostKeyChecking yes
                   EOF
 
+            - name: Check server has the pinned Node version
+              run: |
+                  v=$(cat .nvmrc)
+                  ssh deploy-target test -x "/usr/local/nvm/versions/node/$v/bin/node" || {
+                      echo "::error::Node $v is not installed on the server. As root: NVM_DIR=/usr/local/nvm bash -c '. /usr/local/nvm/nvm.sh && nvm install $v'"
+                      exit 1
+                  }
+
             # Files land group-readable by svc-photography via the setgid target directory.
             # The service can read its code but not modify it.
             - name: Deploy API
               run: >
                   rsync -rlt --delete --chmod=D2750,F0640
-                  --include='server.js' --include='imageCache.js'
+                  --include='server.js' --include='imageCache.js' --include='.nvmrc'
                   --include='package.json' --include='package-lock.json'
                   --include='node_modules/***' --exclude='*'
                   ./api/ deploy-target:${{ env.API_TARGET }}
