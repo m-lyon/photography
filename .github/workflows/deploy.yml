@@ -5,6 +5,10 @@ on:
         branches: [main]
     workflow_dispatch:
 
+permissions:
+    contents: read
+    id-token: write # lets the Tailscale action authenticate with GitHub's OIDC token
+
 concurrency:
     group: deploy
     cancel-in-progress: false
@@ -32,7 +36,7 @@ jobs:
             - name: Build client
               working-directory: ./client
               env:
-                  VITE_METADATA_ENDPOINT: /images-api/metadata
+                  VITE_METADATA_ENDPOINT: /api/metadata
               run: |
                   npm ci
                   npm run build
@@ -42,6 +46,17 @@ jobs:
               run: |
                   npm ci --omit=dev
                   cp ../.nvmrc .nvmrc
+
+            # The server has no public SSH. The runner joins the tailnet as an
+            # ephemeral tag:ci node, which the tailnet policy lets reach only
+            # the server's SSH port.
+            - name: Connect to Tailscale
+              uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+              with:
+                  oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+                  audience: ${{ secrets.TS_AUDIENCE }}
+                  tags: tag:ci
+                  ping: ${{ secrets.REMOTE_HOST }}
 
             - name: Configure SSH
               env:
@@ -90,7 +105,7 @@ jobs:
               run: |
                   for i in 1 2 3 4 5 6; do
                       sleep 5
-                      code=$(curl -s -o /dev/null -w '%{http_code}' https://photos.mattlyon.co.uk/images-api/metadata)
+                      code=$(curl -s -o /dev/null -w '%{http_code}' https://photos.mattlyon.co.uk/api/metadata)
                       echo "attempt $i: $code"
                       [ "$code" = 200 ] && exit 0
                   done
