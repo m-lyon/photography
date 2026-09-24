@@ -6,8 +6,7 @@ require('dotenv-flow/config');
 const { ImageCache } = require('./imageCache');
 
 const app = express();
-const { WHITELISTED_DOMAINS, IMAGES_DIR, CACHE_DIR, DOMAIN, PORT, NODE_ENV, PRIVKEY_PEM, FULLCHAIN_PEM } =
-    process.env;
+const { WHITELISTED_DOMAINS, IMAGES_DIR, CACHE_DIR, DOMAIN, PORT } = process.env;
 const WHITELIST = WHITELISTED_DOMAINS ? WHITELISTED_DOMAINS.split(',') : [];
 const corsOptions = {
     origin: function (origin, callback) {
@@ -62,19 +61,9 @@ app.use(
 // Serve static images
 app.use('/images', express.static(IMAGES_DIR, { maxAge: '7d' }));
 
-let server;
-if (NODE_ENV === 'development') {
-    const http = require('http');
-    server = http.createServer(app);
-} else {
-    const https = require('https');
-    const fs = require('fs');
-    const options = {
-        key: fs.readFileSync(PRIVKEY_PEM),
-        cert: fs.readFileSync(FULLCHAIN_PEM),
-    };
-    server = https.createServer(options, app);
-}
+// TLS is terminated by nginx.
+const http = require('http');
+const server = http.createServer(app);
 server.listen(PORT, '127.0.0.1', () => {
     console.log(`Server running on http://localhost:${PORT}`);
 });
