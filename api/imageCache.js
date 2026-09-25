@@ -21,8 +21,8 @@ const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\.tmp)?$/;
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants
  * plus a blur-up placeholder for each one into `cacheDir`.
  *
- * Variant file names include the source's modification time, so they can be served with
- * immutable caching: replacing a photo produces new URLs, and stale variants are pruned.
+ * Variant file names include the source's modification time and size, so they can be served
+ * with immutable caching: replacing a photo produces new URLs, and stale variants are pruned.
  */
 class ImageCache {
     constructor({ imagesDir, cacheDir }) {
@@ -31,7 +31,16 @@ class ImageCache {
         this.entries = new Map();
         this.refreshing = null;
         this.refreshQueued = false;
-        fs.mkdirSync(cacheDir, { recursive: true });
+        // Set once a scan has completed; /metadata reports unavailable until then
+        this.scanned = false;
+        // Without a writable cache directory the originals are still served, just without variants
+        this.cacheWritable = true;
+        try {
+            fs.mkdirSync(cacheDir, { recursive: true });
+        } catch (error) {
+            this.cacheWritable = false;
+            console.log('Unable to create cache directory, serving originals only:', error.message);
+        }
     }
 
     /** Images in directory order; variants/placeholder are only present once generated. */
@@ -39,13 +48,19 @@ class ImageCache {
         return [...this.entries.values()];
     }
 
-    /** Rescans the images directory. Concurrent calls are coalesced into one follow-up scan. */
+    /**
+     * Rescans the images directory. Concurrent calls are coalesced into one follow-up scan;
+     * the returned promise covers only the scan that is already in flight, not the queued one.
+     */
     refresh() {
         if (this.refreshing) {
             this.refreshQueued = true;
             return this.refreshing;
         }
         this.refreshing = this.scan()
+            .then(() => {
+                this.scanned = true;
+            })
             .catch((error) => console.log('Error refreshing image cache:', error))
             .finally(() => {
                 this.refreshing = null;
@@ -61,9 +76,15 @@ class ImageCache {
     watch(debounceMs = 2000) {
         let timer;
         try {
-            fs.watch(this.imagesDir, () => {
+            this.watcher = fs.watch(this.imagesDir, () => {
                 clearTimeout(timer);
                 timer = setTimeout(() => this.refresh(), debounceMs);
+            });
+            // Without a listener a watcher error (directory removed, inotify limit) would be fatal
+            this.watcher.on('error', (error) => {
+                console.log('Images directory watch failed, new images need a restart:', error.message);
+                this.watcher.close();
+                this.watcher = null;
             });
         } catch (error) {
             console.log('Unable to watch images directory, new images need a restart:', error);
@@ -78,8 +99,8 @@ class ImageCache {
         const entries = new Map();
         for (const file of files) {
             try {
-                const { mtimeMs } = await fsp.stat(path.join(this.imagesDir, file));
-                const key = `${file}.${Math.round(mtimeMs).toString(36)}`;
+                const { mtimeMs, size } = await fsp.stat(path.join(this.imagesDir, file));
+                const key = `${file}.${Math.round(mtimeMs).toString(36)}.${size.toString(36)}`;
                 const existing = this.entries.get(file);
                 entries.set(
                     file,
@@ -90,6 +111,8 @@ class ImageCache {
             }
         }
         this.entries = entries;
+
+        if (!this.cacheWritable) return;
 
         // Second pass generates any missing variants, one image at a time
         for (const entry of entries.values()) {

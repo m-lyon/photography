@@ -3,6 +3,7 @@ name: Deploy
 on:
   push:
     branches: [main]
+  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -10,7 +11,7 @@ permissions:
   id-token: write
 
 concurrency:
-  group: deploy
+  group: deploy-${{ github.ref }}
   cancel-in-progress: false
 
 env:
@@ -19,10 +20,36 @@ env:
   CLIENT_TARGET: /var/www/photos/
 
 jobs:
+  test:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Test API
+        working-directory: ./api
+        run: |
+          npm ci
+          npm test
+
+      - name: Build and lint client
+        working-directory: ./client
+        run: |
+          npm ci
+          npm run build
+          npm run lint
+
   deploy:
+    needs: test
     # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
     runs-on: ubuntu-22.04
     environment: production
+    if: github.event_name != 'pull_request'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -107,8 +134,10 @@ jobs:
         run: |
           for i in 1 2 3 4 5 6; do
               sleep 5
-              code=$(curl -s -o /dev/null -w '%{http_code}' https://photos.mattlyon.co.uk/api/metadata)
+              body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata)
+              code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
-              [ "$code" = 200 ] && exit 0
+              # A 200 with an empty array means the API cannot see any photos, which is a failure
+              [ "$code" = 200 ] && printf '%s' "$body" | sed '$d' | jq -e 'length > 0' >/dev/null && exit 0
           done
           exit 1

@@ -31,6 +31,7 @@ const variantUrl = (file) => `${DOMAIN}/images/variants/${encodeURIComponent(fil
 
 // Endpoint to serve image metadata
 app.get('/metadata', (req, res) => {
+    if (!imageCache.scanned) return res.status(503).send('Image index not ready');
     const imagesMetadata = imageCache.list().map(({ file, width, height, variants, placeholder }) => {
         const original = { src: imageUrl(file), width, height };
         return {
@@ -52,7 +53,7 @@ app.get('/metadata', (req, res) => {
     res.json(imagesMetadata);
 });
 
-// Resized variants are content-addressed (named by source mtime), so they never change
+// Variant names include the source's mtime and size, so a given name never changes
 app.use(
     '/images/variants',
     express.static(imageCache.cacheDir, { maxAge: '1y', immutable: true })

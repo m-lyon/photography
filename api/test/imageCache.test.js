@@ -96,3 +96,35 @@ test('prune leaves files it did not create alone', async () => {
     assert.ok(fs.existsSync(path.join(cacheDir, 'notes.txt')));
     assert.ok(fs.existsSync(path.join(cacheDir, 'subdir')));
 });
+
+test('swaps dimensions for rotated EXIF orientations', async () => {
+    const { imagesDir, cache } = setup();
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .withMetadata({ orientation: 6 })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'a.jpg'));
+    await cache.refresh();
+
+    const [entry] = cache.list();
+    assert.equal(entry.width, 500);
+    assert.equal(entry.height, 1000);
+    assert.deepEqual(
+        entry.variants.map((variant) => variant.width),
+        [400]
+    );
+    assert.equal(entry.variants[0].height, 800);
+});
+
+test('serves GIFs full size but still gives them a placeholder', async () => {
+    const { imagesDir, cache } = setup();
+    await sharp({
+        create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } },
+    })
+        .gif()
+        .toFile(path.join(imagesDir, 'a.gif'));
+    await cache.refresh();
+
+    const [entry] = cache.list();
+    assert.deepEqual(entry.variants, []);
+    assert.match(entry.placeholder, /^data:image\/webp;base64,/);
+});
