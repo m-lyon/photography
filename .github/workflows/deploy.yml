@@ -62,6 +62,8 @@ jobs:
         env:
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+          REMOTE_HOST: ${{ secrets.REMOTE_HOST }}
+          REMOTE_PORT: ${{ secrets.REMOTE_PORT }}
         run: |
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
@@ -69,8 +71,8 @@ jobs:
           chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
           cat > ~/.ssh/config <<EOF
           Host deploy-target
-              HostName ${{ secrets.REMOTE_HOST }}
-              Port ${{ secrets.REMOTE_PORT }}
+              HostName $REMOTE_HOST
+              Port $REMOTE_PORT
               User ${{ env.REMOTE_USER }}
               IdentityFile ~/.ssh/deploy_key
               IdentitiesOnly yes

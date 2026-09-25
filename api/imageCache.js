@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fsp = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
 
@@ -11,6 +12,10 @@ const PLACEHOLDER_WIDTH = 16;
 const PLACEHOLDER_QUALITY = 40;
 
 const IMAGE_PATTERN = /\.(jpe?g|png|gif)$/i;
+// GIFs can be animated, which a resized still WebP would lose, so they are served full size only
+const NO_VARIANTS_PATTERN = /\.gif$/i;
+// Names generate() gives its output; anything else in the cache directory is left alone
+const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\.tmp)?$/;
 
 /**
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants
@@ -66,13 +71,14 @@ class ImageCache {
     }
 
     async scan() {
-        const files = fs.readdirSync(this.imagesDir).filter((file) => IMAGE_PATTERN.test(file));
+        const all = await fsp.readdir(this.imagesDir);
+        const files = all.filter((file) => IMAGE_PATTERN.test(file));
 
         // First pass reads only image headers, so every photo is listed quickly on startup
         const entries = new Map();
         for (const file of files) {
             try {
-                const { mtimeMs } = fs.statSync(path.join(this.imagesDir, file));
+                const { mtimeMs } = await fsp.stat(path.join(this.imagesDir, file));
                 const key = `${file}.${Math.round(mtimeMs).toString(36)}`;
                 const existing = this.entries.get(file);
                 entries.set(
@@ -95,11 +101,12 @@ class ImageCache {
             }
         }
 
-        this.prune();
+        await this.prune();
     }
 
     async readEntry(file, key) {
         const metadata = await sharp(path.join(this.imagesDir, file)).metadata();
+        if (!metadata.width || !metadata.height) throw new Error('missing image dimensions');
         // EXIF orientations 5-8 are rotated 90°, so displayed dimensions are swapped
         const rotated = (metadata.orientation || 1) >= 5;
         return {
@@ -115,8 +122,11 @@ class ImageCache {
     async generate(entry) {
         const image = sharp(path.join(this.imagesDir, entry.file)).rotate();
 
+        const widths = NO_VARIANTS_PATTERN.test(entry.file)
+            ? []
+            : VARIANT_WIDTHS.filter((width) => width < entry.width);
         const variants = await Promise.all(
-            VARIANT_WIDTHS.filter((width) => width < entry.width).map(async (width) => {
+            widths.map(async (width) => {
                 const file = `${entry.key}.${width}.webp`;
                 await this.writeIfMissing(file, () =>
                     image.clone().resize({ width }).webp({ quality: VARIANT_QUALITY }).toBuffer()
@@ -126,36 +136,46 @@ class ImageCache {
         );
 
         const placeholderFile = `${entry.key}.placeholder.webp`;
-        const placeholder = await this.writeIfMissing(placeholderFile, () =>
+        await this.writeIfMissing(placeholderFile, () =>
             image
                 .clone()
                 .resize({ width: PLACEHOLDER_WIDTH })
                 .webp({ quality: PLACEHOLDER_QUALITY })
                 .toBuffer()
         );
+        const placeholder = await fsp.readFile(path.join(this.cacheDir, placeholderFile));
 
         entry.variants = variants;
         entry.placeholder = `data:image/webp;base64,${placeholder.toString('base64')}`;
     }
 
-    /** Returns the cached file's contents, rendering and writing it first if needed. */
+    /** Renders and writes the cached file unless it is already there. */
     async writeIfMissing(file, render) {
         const target = path.join(this.cacheDir, file);
-        if (fs.existsSync(target)) return fs.readFileSync(target);
+        try {
+            await fsp.access(target);
+            return;
+        } catch {
+            // not cached yet
+        }
         const buffer = await render();
         // Write then rename so a partially written file is never served
         const temp = `${target}.tmp`;
-        fs.writeFileSync(temp, buffer);
-        fs.renameSync(temp, target);
-        return buffer;
+        await fsp.writeFile(temp, buffer);
+        await fsp.rename(temp, target);
     }
 
     /** Deletes cached files belonging to images that were removed or replaced. */
-    prune() {
+    async prune() {
         const keys = new Set([...this.entries.values()].map((entry) => entry.key));
-        for (const file of fs.readdirSync(this.cacheDir)) {
-            const key = file.replace(/\.(\d+|placeholder)\.webp(\.tmp)?$/, '');
-            if (!keys.has(key)) fs.rmSync(path.join(this.cacheDir, file), { force: true });
+        for (const file of await fsp.readdir(this.cacheDir)) {
+            const match = CACHE_FILE_PATTERN.exec(file);
+            if (!match || keys.has(match[1])) continue;
+            try {
+                await fsp.rm(path.join(this.cacheDir, file), { force: true });
+            } catch (error) {
+                console.log(`Error removing stale cache file ${file}:`, error.message);
+            }
         }
     }
 }

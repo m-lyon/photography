@@ -30,6 +30,7 @@ export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProp
                 alt={alt}
                 className={`${className} blur-up__image${loaded ? ' blur-up__image--loaded' : ''}`}
                 onLoad={() => setLoaded(true)}
+                onError={() => setLoaded(true)}
             />
         </div>
     );

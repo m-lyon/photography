@@ -1,4 +1,7 @@
 {
+  "scripts": {
+    "test": "node --test test/"
+  },
   "dependencies": {
     "cors": "^2.8.5",
     "dotenv-flow": "^4.1.0",
