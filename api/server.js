@@ -61,7 +61,6 @@ app.use(
 // Serve static images
 app.use('/images', express.static(IMAGES_DIR, { maxAge: '7d' }));
 
-// TLS is terminated by nginx.
 const http = require('http');
 const server = http.createServer(app);
 server.listen(PORT, '127.0.0.1', () => {

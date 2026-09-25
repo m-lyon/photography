@@ -1,7 +1,9 @@
 # photography
+
 Simple Photography App
 
 ## Image variants
+
 The API uses [sharp](https://sharp.pixelplumbing.com/) to generate resized WebP versions
 (400/800/1600/2400px) and a tiny blur-up placeholder for every photo in `IMAGES_DIR`, and
 returns them as a `srcSet` from `/metadata`, so the gallery only downloads the size it needs.
@@ -12,6 +14,7 @@ returns them as a `srcSet` from `/metadata`, so the gallery only downloads the s
   full size until their variants are ready.
 
 ## Deployment
+
 Pushing to `main` runs `.github/workflows/deploy.yml`, which builds the client and API on
 Ubuntu 22.04 and deploys them to the server as the `deploy-photography` account:
 
