@@ -13,6 +13,7 @@ import 'yet-another-react-lightbox/plugins/thumbnails.css';
 
 // import photos from './photos.ts';
 import { useGetPhotos } from './useGetPhotos.tsx';
+import { BlurUpPhoto } from './BlurUpPhoto.tsx';
 
 export default function App() {
     const [index, setIndex] = useState(-1);
@@ -26,6 +27,7 @@ export default function App() {
                 layout='rows'
                 onClick={({ index }) => setIndex(index)}
                 spacing={10}
+                renderPhoto={(props) => <BlurUpPhoto {...props} />}
             />
             <Lightbox
                 slides={photos}

@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react';
 import axios from 'axios';
 
-interface Photo {
+interface Image {
     src: string;
     width: number;
     height: number;
+}
+export interface Photo extends Image {
+    /** Resized versions, smallest first; absent until the server has generated them */
+    srcSet?: Image[];
+    /** Tiny data URI shown blurred while the photo loads */
+    placeholder?: string;
 }
 export function useGetPhotos(): Photo[] {
     const [photos, setPhotos] = useState<Photo[]>([]);

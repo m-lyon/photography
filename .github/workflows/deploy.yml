@@ -1,0 +1,112 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+env:
+  REMOTE_USER: deploy-photography
+  API_TARGET: /srv/photography/
+  CLIENT_TARGET: /var/www/photos/
+
+jobs:
+  deploy:
+    # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
+    runs-on: ubuntu-22.04
+    environment: production
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup node
+        uses: actions/setup-node@v4
+        with:
+          # Same pinned version the server runs, via nvm-exec reading the deployed .nvmrc.
+          node-version-file: .nvmrc
+
+      - name: Build client
+        working-directory: ./client
+        env:
+          VITE_METADATA_ENDPOINT: /api/metadata
+        run: |
+          npm ci
+          npm run build
+
+      - name: Install API production dependencies
+        working-directory: ./api
+        run: |
+          npm ci --omit=dev
+          cp ../.nvmrc .nvmrc
+
+      # The server has no public SSH. The runner joins the tailnet as an
+      # ephemeral tag:ci node, which the tailnet policy lets reach only
+      # the server's SSH port.
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@d1b6cd204f8dceda5b3eaad7f1f767be390056cd # v4.2.0
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ secrets.REMOTE_HOST }}
+
+      - name: Configure SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/deploy_key ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host deploy-target
+              HostName ${{ secrets.REMOTE_HOST }}
+              Port ${{ secrets.REMOTE_PORT }}
+              User ${{ env.REMOTE_USER }}
+              IdentityFile ~/.ssh/deploy_key
+              IdentitiesOnly yes
+              StrictHostKeyChecking yes
+          EOF
+
+      - name: Check server has the pinned Node version
+        run: |
+          v=$(cat .nvmrc)
+          ssh deploy-target test -x "/usr/local/nvm/versions/node/$v/bin/node" || {
+              echo "::error::Node $v is not installed on the server. As root: NVM_DIR=/usr/local/nvm bash -c '. /usr/local/nvm/nvm.sh && nvm install $v'"
+              exit 1
+          }
+
+      # Files land group-readable by svc-photography via the setgid target directory.
+      # The service can read its code but not modify it.
+      - name: Deploy API
+        run: >
+          rsync -rlt --delete --chmod=D2750,F0640
+          --include='server.js' --include='imageCache.js' --include='.nvmrc'
+          --include='package.json' --include='package-lock.json'
+          --include='node_modules/***' --exclude='*'
+          ./api/ deploy-target:${{ env.API_TARGET }}
+
+      - name: Deploy client
+        run: rsync -rlt --delete --chmod=D755,F644 ./client/dist/ deploy-target:${{ env.CLIENT_TARGET }}
+
+      - name: Restart API
+        run: ssh deploy-target sudo -n /usr/bin/systemctl restart photography.service
+
+      - name: Health check
+        run: |
+          for i in 1 2 3 4 5 6; do
+              sleep 5
+              code=$(curl -s -o /dev/null -w '%{http_code}' https://photos.mattlyon.co.uk/api/metadata)
+              echo "attempt $i: $code"
+              [ "$code" = 200 ] && exit 0
+          done
+          exit 1
