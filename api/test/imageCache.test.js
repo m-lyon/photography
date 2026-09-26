@@ -128,3 +128,20 @@ test('serves GIFs full size but still gives them a placeholder', async () => {
     assert.deepEqual(entry.variants, []);
     assert.match(entry.placeholder, /^data:image\/webp;base64,/);
 });
+
+test('stops generating when the cache directory becomes read-only', { skip: process.getuid?.() === 0 }, async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    fs.chmodSync(cacheDir, 0o555);
+    try {
+        await cache.refresh();
+    } finally {
+        fs.chmodSync(cacheDir, 0o755);
+    }
+
+    assert.equal(cache.cacheWritable, false);
+    const [entry] = cache.list();
+    assert.equal(entry.file, 'a.jpg');
+    assert.deepEqual(entry.variants, []);
+    assert.equal(entry.placeholder, null);
+});

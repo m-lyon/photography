@@ -11,9 +11,11 @@ export interface Photo extends Image {
     srcSet?: Image[];
     /** Tiny data URI shown blurred while the photo loads */
     placeholder?: string;
+    /** False while the server is still generating this photo's variants */
+    variantsReady?: boolean;
 }
 
-// The API answers 503 while it is still indexing, and omits srcSet until variants are generated
+// The API answers 503 while it is still indexing, and reports variantsReady per photo after that
 const RETRY_MS = 2000;
 const MAX_RETRIES = 10;
 
@@ -43,8 +45,8 @@ export function useGetPhotos(): Photo[] {
                 }
                 const received: Photo[] = response.data;
                 setPhotos(received);
-                // Variants may still be generating, so ask again until every photo has them
-                if (received.some((photo) => !photo.srcSet)) retry();
+                // Variants may still be generating, so ask again until the server says they are ready
+                if (received.some((photo) => photo.variantsReady === false)) retry();
             } catch (error) {
                 console.error('Error fetching image metadata:', error);
                 retry();

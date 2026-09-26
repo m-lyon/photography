@@ -29,6 +29,8 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
                 return {
                     ...original,
                     placeholder: placeholder || undefined,
+                    // False only while generation is still pending, so clients know when to stop polling
+                    variantsReady: !imageCache.cacheWritable || Boolean(placeholder),
                     // Smallest first, ending with the original so the lightbox can zoom to full detail
                     srcSet: variants.length
                         ? [

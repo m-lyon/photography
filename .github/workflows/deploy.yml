@@ -9,11 +9,6 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  # One group for the deploy target, so two runs never touch the server at once
-  group: deploy-production
-  cancel-in-progress: false
-
 env:
   REMOTE_USER: deploy-photography
   API_TARGET: /srv/photography/
@@ -46,6 +41,10 @@ jobs:
 
   deploy:
     needs: test
+    # One group for the deploy target, so two runs never touch the server at once
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
     # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
     runs-on: ubuntu-22.04
     environment: production

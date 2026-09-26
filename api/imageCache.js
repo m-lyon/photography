@@ -15,7 +15,7 @@ const IMAGE_PATTERN = /\.(jpe?g|png|gif)$/i;
 // GIFs can be animated, which a resized still WebP would lose, so they are served full size only
 const NO_VARIANTS_PATTERN = /\.gif$/i;
 // Names generate() gives its output; anything else in the cache directory is left alone
-const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\.tmp)?$/;
+const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\..+\.tmp)?$/;
 
 // Backoff between attempts at the first scan, which fails if the images directory is missing
 const INITIAL_RETRY_MS = 1000;
@@ -209,7 +209,8 @@ class ImageCache {
         }
         const buffer = await render();
         // Write then rename so a partially written file is never served
-        const temp = `${target}.tmp`;
+        // Unique per writer: two processes briefly overlap across a restart
+        const temp = `${target}.${process.pid}.${Math.random().toString(36).slice(2)}.tmp`;
         try {
             await fsp.writeFile(temp, buffer);
             await fsp.rename(temp, target);
