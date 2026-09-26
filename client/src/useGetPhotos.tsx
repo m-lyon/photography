@@ -31,6 +31,7 @@ export function useGetPhotos(): Photo[] {
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout>;
         let attempt = 0;
+        let lastSerialized: string | null = null;
 
         // Network errors and bad responses back off, but keep retrying so the gallery recovers
         // from an outage of any length without a reload
@@ -54,7 +55,12 @@ export function useGetPhotos(): Photo[] {
                     return;
                 }
                 const received: Photo[] = response.data;
-                setPhotos(received);
+                // Unchanged metadata would otherwise re-render the album on every poll
+                const serialized = JSON.stringify(received);
+                if (serialized !== lastSerialized) {
+                    lastSerialized = serialized;
+                    setPhotos(received);
+                }
                 attempt = 0;
                 // Variants may still be generating, so ask again until the server says they are ready
                 scheduleNext(

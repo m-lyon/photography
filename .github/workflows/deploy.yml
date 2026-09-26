@@ -134,7 +134,7 @@ jobs:
       - name: Health check
         run: |
           check() {
-              body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
+              body=$(curl -s --max-time 10 -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
               code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
               [ "$code" = 200 ] || return 1

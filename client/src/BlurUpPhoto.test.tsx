@@ -15,7 +15,15 @@ const photo: Photo = {
 function renderPhoto() {
     const props = {
         photo,
-        imageProps: { src: photo.src, alt: 'a', className: 'x', style: {} },
+        imageProps: {
+            src: photo.src,
+            srcSet: '/images/a-400.webp 400w, /images/a-800.webp 800w',
+            sizes: '(max-width: 600px) 100vw, 50vw',
+            loading: 'lazy',
+            alt: 'a',
+            className: 'x',
+            style: {},
+        },
         wrapperStyle: {},
     } as unknown as RenderPhotoProps<Photo>;
     const { container } = render(<BlurUpPhoto {...props} />);
@@ -26,6 +34,13 @@ function renderPhoto() {
 }
 
 afterEach(cleanup);
+
+test('passes responsive image attributes through to the img', () => {
+    const { image } = renderPhoto();
+    expect(image.getAttribute('srcset')).toBe('/images/a-400.webp 400w, /images/a-800.webp 800w');
+    expect(image.getAttribute('sizes')).toBe('(max-width: 600px) 100vw, 50vw');
+    expect(image.getAttribute('loading')).toBe('lazy');
+});
 
 test('hides the image behind the placeholder until it loads', () => {
     const { image, placeholder } = renderPhoto();

@@ -301,7 +301,9 @@ class ImageCache {
     /** Deletes cached files belonging to images that were removed or replaced. */
     async prune() {
         const keys = new Set([...this.entries.values()].map((entry) => entry.key));
+        const seen = new Set();
         for (const file of await fsp.readdir(this.cacheDir)) {
+            seen.add(file);
             const match = CACHE_FILE_PATTERN.exec(file);
             // match[3] is a leftover temp file, which is never meant to be served
             if (!match || (keys.has(match[1]) && !match[3])) continue;
@@ -322,6 +324,10 @@ class ImageCache {
             } catch (error) {
                 console.log(`Error removing stale cache file ${file}:`, error.message);
             }
+        }
+        // Files that vanished another way would otherwise leak entries for the life of the process
+        for (const file of this.retired.keys()) {
+            if (!seen.has(file)) this.retired.delete(file);
         }
     }
 }
