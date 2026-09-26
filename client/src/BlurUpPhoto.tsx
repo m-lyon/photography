@@ -7,9 +7,12 @@ import './BlurUpPhoto.css';
 // Shows the photo's tiny placeholder blurred in its slot, then fades the real image in once loaded
 export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProps<Photo>) {
     const [loaded, setLoaded] = useState(false);
-    // A variant URL can 404 after it has been pruned; browsers do not fall back from srcSet to src
-    const [variantsFailed, setVariantsFailed] = useState(false);
+    // A variant URL can 404 after it has been pruned; browsers do not fall back from srcSet to src.
+    // Remembering which srcSet failed rather than a flag lets a later metadata refresh, which
+    // supplies fresh variant URLs, start using them again
+    const [failedSrcSet, setFailedSrcSet] = useState<string | undefined>(undefined);
     const { src, alt, srcSet, sizes, style, className, ...rest } = imageProps;
+    const variantsFailed = srcSet !== undefined && srcSet === failedSrcSet;
 
     return (
         <div className='blur-up' style={{ ...wrapperStyle, cursor: style?.cursor }}>
@@ -38,7 +41,7 @@ export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProp
                 onLoad={() => setLoaded(true)}
                 onError={() => {
                     // Retry once with the original; if that fails too, stop hiding the failure
-                    if (srcSet && !variantsFailed) setVariantsFailed(true);
+                    if (srcSet && !variantsFailed) setFailedSrcSet(srcSet);
                     else setLoaded(true);
                 }}
             />

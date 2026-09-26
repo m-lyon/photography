@@ -194,6 +194,9 @@ class ImageCache {
                 // clients stop waiting; transient I/O errors are left to retry on the next scan
                 if (this.cacheWritable && !TRANSIENT_ERROR_CODES.includes(error.code)) {
                     entry.failed = true;
+                    // Nothing will ever advertise the files an abandoned attempt did write, and
+                    // prune() leaves them alone while the key is live, so remove them here
+                    await this.removeCacheFiles(entry.key);
                 }
             }
         }
@@ -263,6 +266,22 @@ class ImageCache {
         entry.placeholder = `data:image/webp;base64,${placeholder.toString('base64')}`;
     }
 
+    /** Deletes every cached file belonging to one key, ignoring anything already gone. */
+    async removeCacheFiles(key) {
+        try {
+            for (const file of await fsp.readdir(this.cacheDir)) {
+                const match = CACHE_FILE_PATTERN.exec(file);
+                // Temp files are left to the age-based sweep in prune(): another instance may
+                // still be writing one
+                if (match && match[1] === key && !match[3]) {
+                    await fsp.rm(path.join(this.cacheDir, file), { force: true });
+                }
+            }
+        } catch (error) {
+            console.log(`Error removing cache files for ${key}:`, error.message);
+        }
+    }
+
     /** Renders and writes the cached file unless it is already there. */
     async writeIfMissing(file, render) {
         const target = path.join(this.cacheDir, file);
@@ -309,7 +328,12 @@ class ImageCache {
             seen.add(file);
             const match = CACHE_FILE_PATTERN.exec(file);
             // match[3] is a leftover temp file, which is never meant to be served
-            if (!match || (keys.has(match[1]) && !match[3])) continue;
+            if (!match || (keys.has(match[1]) && !match[3])) {
+                // A key can become live again (a photo restored with its original mtime and size),
+                // and a stale timestamp would skip the grace period next time it is retired
+                this.retired.delete(file);
+                continue;
+            }
             // Another instance may still be writing a recent temp file
             if (match[3] && !(await this.olderThan(file, TEMP_FILE_MAX_AGE_MS))) continue;
             // Clients already holding this URL in a srcSet get time to pick up the new keys

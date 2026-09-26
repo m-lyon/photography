@@ -24,6 +24,8 @@ const PENDING_POLL_MS = 15000;
 // after a multiple of this interval, so keep CLIENT_REFRESH_MS in api/imageCache.js in step.
 const REFRESH_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
+// Builds that do not set the variable (CI, local preview) talk to the API through the same origin
+const METADATA_ENDPOINT = import.meta.env.VITE_METADATA_ENDPOINT ?? '/api/metadata';
 
 export function useGetPhotos(): Photo[] {
     const [photos, setPhotos] = useState<Photo[]>([]);
@@ -48,7 +50,7 @@ export function useGetPhotos(): Photo[] {
 
         const fetchImages = async () => {
             try {
-                const response = await axios.get(import.meta.env.VITE_METADATA_ENDPOINT, { timeout: REQUEST_TIMEOUT_MS });
+                const response = await axios.get(METADATA_ENDPOINT, { timeout: REQUEST_TIMEOUT_MS });
                 if (cancelled) return;
                 if (!Array.isArray(response.data)) {
                     console.error('Unexpected image metadata response');

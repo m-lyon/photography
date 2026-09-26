@@ -124,6 +124,51 @@ test('variantsReady is false while generation is pending and true once it comple
     assert.ok(ready.srcSet.length > 0);
 });
 
+test('a permanently failed generation is latched, reported ready and not retried', async () => {
+    const { imagesDir, cache, app } = setup();
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'a.jpg'));
+
+    let calls = 0;
+    cache.generate = async () => {
+        calls += 1;
+        // No code, so not one of the transient conditions that are left to retry
+        throw new Error('unsupported image');
+    };
+    await cache.refresh();
+    assert.equal(calls, 1);
+    assert.equal(cache.list()[0].failed, true);
+
+    const [photo] = JSON.parse((await get(app, '/metadata')).body);
+    assert.equal(photo.srcSet, undefined);
+    assert.equal(photo.placeholder, undefined);
+    // Otherwise clients would poll every 15s for variants that will never arrive
+    assert.equal(photo.variantsReady, true);
+
+    await cache.refresh();
+    assert.equal(calls, 1);
+});
+
+test('a failed generation leaves no orphaned variant files behind', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'a.jpg'));
+
+    const writeIfMissing = cache.writeIfMissing.bind(cache);
+    let writes = 0;
+    cache.writeIfMissing = async (file, render) => {
+        if (++writes > 1) throw new Error('encode failed');
+        return writeIfMissing(file, render);
+    };
+    await cache.refresh();
+
+    assert.equal(cache.list()[0].failed, true);
+    // The one variant that was written is not in any srcSet, so it must not be left on disk
+    assert.deepEqual(fs.readdirSync(cacheDir), []);
+});
+
 test('CORS headers are only sent for whitelisted origins', async () => {
     const { app } = setup({ whitelist: ['https://allowed.test'] });
 

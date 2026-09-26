@@ -142,10 +142,12 @@ jobs:
           }
           # An empty array means the API cannot see any photos, and a src that is not an absolute
           # URL means DOMAIN is misconfigured, which leaves the gallery blank
-          for i in 1 2 3 4 5 6; do
-              sleep 5
+          # /metadata answers 503 until the first index pass has stat'd and read every image,
+          # which on a large library or a cold page cache takes well over half a minute
+          for i in $(seq 1 12); do
+              sleep 10
               check 'length > 0 and all(.src | startswith("https://"))' && break
-              [ "$i" = 6 ] && exit 1
+              [ "$i" = 12 ] && exit 1
           done
           # A missing placeholder means variants are not being generated, either because the cache
           # directory is not writable or because generation keeps failing; first-time generation of
