@@ -1,5 +1,6 @@
 const express = require('express');
 const cors = require('cors');
+const { CLIENT_REFRESH_MS } = require('./imageCache');
 
 /** Builds the API around an ImageCache; the caller owns creating and listening. */
 function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
@@ -14,6 +15,8 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
             }
         },
         credentials: true,
+        // The refresh interval is read from a header, which is hidden from cross-origin JS by default
+        exposedHeaders: ['X-Metadata-Refresh-Ms'],
     };
     app.use(cors(corsOptions));
 
@@ -47,6 +50,8 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
             });
         // Clients poll this while variants generate; revalidating keeps unchanged polls to a 304
         res.set('Cache-Control', 'no-cache');
+        // Pruning waits out this interval, so clients take it from here rather than hardcoding it
+        res.set('X-Metadata-Refresh-Ms', String(CLIENT_REFRESH_MS));
         res.json(imagesMetadata);
     });
 

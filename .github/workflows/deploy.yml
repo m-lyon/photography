@@ -13,6 +13,7 @@ env:
   REMOTE_USER: deploy-photography
   API_TARGET: /srv/photography/
   CLIENT_TARGET: /var/www/photos/
+  PUBLIC_URL: https://photos.mattlyon.co.uk
 
 jobs:
   test:
@@ -121,12 +122,12 @@ jobs:
       # The service can read its code but not modify it.
       - name: Deploy API
         run: >
-          rsync -rlt --delete --chmod=D2750,F0640
+          rsync -rlpt --delete --chmod=D2750,F0640
           --exclude='/test/' --exclude='.env*' --exclude='.image-cache/'
           ./api/ deploy-target:${{ env.API_TARGET }}
 
       - name: Deploy client
-        run: rsync -rlt --delete --chmod=D755,F644 ./client/dist/ deploy-target:${{ env.CLIENT_TARGET }}
+        run: rsync -rlpt --delete --chmod=D755,F644 ./client/dist/ deploy-target:${{ env.CLIENT_TARGET }}
 
       - name: Restart API
         run: ssh deploy-target sudo -n /usr/bin/systemctl restart photography.service
@@ -134,7 +135,7 @@ jobs:
       - name: Health check
         run: |
           check() {
-              body=$(curl -s --max-time 10 -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
+              body=$(curl -s --max-time 10 -w '\n%{http_code}' "$PUBLIC_URL/api/metadata" || true)
               code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
               [ "$code" = 200 ] || return 1

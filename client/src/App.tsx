@@ -31,6 +31,7 @@ export default function App() {
                 onClick={({ index }) => setIndex(index)}
                 spacing={10}
                 renderPhoto={(props) => <BlurUpPhoto {...props} />}
+                componentsProps={{ imageProps: { loading: 'lazy', decoding: 'async' } }}
             />
             <Lightbox
                 slides={slides}

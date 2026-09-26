@@ -21,8 +21,9 @@ const MAX_RETRY_MS = 30000;
 const PENDING_POLL_MS = 15000;
 // Variant URLs are content-keyed, so a tab left open would keep a srcSet whose files have been
 // pruned; a slow background refresh picks up the new keys. The server prunes a retired variant
-// after a multiple of this interval, so keep CLIENT_REFRESH_MS in api/imageCache.js in step.
-const REFRESH_MS = 5 * 60 * 1000;
+// after a multiple of this interval and sends it back in X-Metadata-Refresh-Ms, so the two cannot
+// drift; the default only applies until the first response arrives.
+const DEFAULT_REFRESH_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 // Builds that do not set the variable (CI, local preview) talk to the API through the same origin
 const METADATA_ENDPOINT = import.meta.env.VITE_METADATA_ENDPOINT ?? '/api/metadata';
@@ -35,6 +36,7 @@ export function useGetPhotos(): Photo[] {
         let timer: ReturnType<typeof setTimeout>;
         let attempt = 0;
         let lastSerialized: string | null = null;
+        let refreshMs = DEFAULT_REFRESH_MS;
 
         // Network errors and bad responses back off, but keep retrying so the gallery recovers
         // from an outage of any length without a reload
@@ -52,6 +54,8 @@ export function useGetPhotos(): Photo[] {
             try {
                 const response = await axios.get(METADATA_ENDPOINT, { timeout: REQUEST_TIMEOUT_MS });
                 if (cancelled) return;
+                const advertised = Number(response.headers?.['x-metadata-refresh-ms']);
+                if (Number.isFinite(advertised) && advertised > 0) refreshMs = advertised;
                 if (!Array.isArray(response.data)) {
                     console.error('Unexpected image metadata response');
                     retry();
@@ -69,7 +73,7 @@ export function useGetPhotos(): Photo[] {
                 scheduleNext(
                     received.some((photo) => photo.variantsReady === false)
                         ? PENDING_POLL_MS
-                        : REFRESH_MS
+                        : refreshMs
                 );
             } catch (error) {
                 console.error('Error fetching image metadata:', error);

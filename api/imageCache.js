@@ -27,7 +27,8 @@ const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 60000;
 // A temp file younger than this may still be being written by a concurrently running instance
 const TEMP_FILE_MAX_AGE_MS = 60000;
-// Must match REFRESH_MS in client/src/useGetPhotos.tsx
+// How often a loaded page should refresh its metadata; served to clients from /metadata so the
+// two cannot drift
 const CLIENT_REFRESH_MS = 5 * 60 * 1000;
 // Loaded pages keep a srcSet of the old variants until they refresh their metadata, so stale files
 // are only deleted once they have been retired for several of those refresh intervals, leaving room
@@ -362,4 +363,4 @@ class ImageCache {
     }
 }
 
-module.exports = { ImageCache };
+module.exports = { ImageCache, CLIENT_REFRESH_MS };
