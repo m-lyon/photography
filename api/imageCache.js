@@ -125,6 +125,9 @@ class ImageCache {
         const previousSize = this.entries.size;
         const all = await fsp.readdir(this.imagesDir);
         const files = all.filter((file) => IMAGE_PATTERN.test(file));
+        // An empty directory where there were photos means it is probably unmounted, not emptied,
+        // so keep the index and the cache rather than wiping every variant
+        if (files.length === 0 && previousSize > 0) return;
 
         // First pass reads only image headers, so every photo is listed quickly on startup
         const entries = new Map();
@@ -164,9 +167,6 @@ class ImageCache {
             }
         }
 
-        // An empty directory where there were photos means it is probably unmounted, not emptied,
-        // so keep the cache rather than wiping every variant
-        if (entries.size === 0 && previousSize > 0) return;
         await this.prune();
     }
 

@@ -163,3 +163,16 @@ test('prune removes stale temp files only once they are too old to be in progres
     assert.ok(fs.existsSync(fresh));
     assert.ok(!fs.existsSync(stale));
 });
+
+test('keeps the index when the images directory reads as empty', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    await cache.refresh();
+    const before = cache.list();
+
+    fs.unlinkSync(path.join(imagesDir, 'a.jpg'));
+    await cache.refresh();
+
+    assert.deepEqual(cache.list(), before);
+    assert.ok(fs.readdirSync(cacheDir).length > 0);
+});

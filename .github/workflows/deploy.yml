@@ -138,7 +138,9 @@ jobs:
               body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
               code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
-              # A 200 with an empty array means the API cannot see any photos, which is a failure
-              [ "$code" = 200 ] && printf '%s' "$body" | sed '$d' | jq -e 'length > 0' >/dev/null && exit 0
+              # An empty array means the API cannot see any photos, and a missing placeholder means
+              # the cache directory is not writable, so variants are silently disabled
+              [ "$code" = 200 ] && printf '%s' "$body" | sed '$d' |
+                  jq -e 'length > 0 and any(.placeholder != null)' >/dev/null && exit 0
           done
           exit 1

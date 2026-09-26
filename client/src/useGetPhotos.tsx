@@ -19,6 +19,9 @@ export interface Photo extends Image {
 const RETRY_MS = 2000;
 const MAX_RETRY_MS = 30000;
 const PENDING_POLL_MS = 15000;
+// Variant URLs are content-keyed, so a tab left open would keep a srcSet whose files have been
+// pruned; a slow background refresh picks up the new keys
+const REFRESH_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 
 export function useGetPhotos(): Photo[] {
@@ -36,9 +39,9 @@ export function useGetPhotos(): Photo[] {
             if (!cancelled) timer = setTimeout(fetchImages, Math.min(RETRY_MS * attempt, MAX_RETRY_MS));
         };
 
-        // Variants are still generating, which has no useful deadline, so keep asking slowly
-        const pollPending = () => {
-            if (!cancelled) timer = setTimeout(fetchImages, PENDING_POLL_MS);
+        // Polls quickly while variants are generating, slowly otherwise
+        const scheduleNext = (delay: number) => {
+            if (!cancelled) timer = setTimeout(fetchImages, delay);
         };
 
         const fetchImages = async () => {
@@ -54,7 +57,11 @@ export function useGetPhotos(): Photo[] {
                 setPhotos(received);
                 attempt = 0;
                 // Variants may still be generating, so ask again until the server says they are ready
-                if (received.some((photo) => photo.variantsReady === false)) pollPending();
+                scheduleNext(
+                    received.some((photo) => photo.variantsReady === false)
+                        ? PENDING_POLL_MS
+                        : REFRESH_MS
+                );
             } catch (error) {
                 console.error('Error fetching image metadata:', error);
                 retry();

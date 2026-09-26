@@ -1,6 +1,6 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
 import axios from 'axios';
-import { afterEach, beforeEach, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, expect, test, vi, type MockInstance } from 'vitest';
 
 import { useGetPhotos, type Photo } from './useGetPhotos.tsx';
 
@@ -11,12 +11,12 @@ const photo = (variantsReady: boolean): Photo => ({
     variantsReady,
 });
 
-let get: ReturnType<typeof vi.spyOn>;
+let get: MockInstance<typeof axios.get>;
 
 beforeEach(() => {
     vi.useFakeTimers();
     vi.spyOn(console, 'error').mockImplementation(() => {});
-    get = vi.spyOn(axios, 'get');
+    get = vi.spyOn(axios, 'get') as MockInstance<typeof axios.get>;
 });
 
 afterEach(() => {
@@ -35,9 +35,11 @@ test('keeps polling while a photo is still generating its variants', async () =>
     await act(() => vi.advanceTimersByTimeAsync(20000));
     expect(get).toHaveBeenCalledTimes(2);
 
-    // Ready now, so no further polling
+    // Ready now, so only the slow background refresh, which picks up new variant URLs
     await act(() => vi.advanceTimersByTimeAsync(60000));
     expect(get).toHaveBeenCalledTimes(2);
+    await act(() => vi.advanceTimersByTimeAsync(5 * 60 * 1000));
+    expect(get).toHaveBeenCalledTimes(3);
 });
 
 test('keeps retrying with a capped backoff while the request fails', async () => {

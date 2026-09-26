@@ -21,8 +21,9 @@ export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProp
             <img
                 {...rest}
                 ref={(img) => {
-                    // Already-cached images can finish loading before React attaches onLoad
-                    if (img?.complete && img.naturalWidth) setLoaded(true);
+                    // Already-cached images can finish loading (or failing) before React
+                    // attaches onLoad
+                    if (img?.complete) setLoaded(true);
                 }}
                 src={src}
                 srcSet={srcSet}
