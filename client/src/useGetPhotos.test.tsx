@@ -1,4 +1,4 @@
-import { act, renderHook } from '@testing-library/react';
+import { act, cleanup, renderHook } from '@testing-library/react';
 import axios from 'axios';
 import { afterEach, beforeEach, expect, test, vi } from 'vitest';
 
@@ -20,6 +20,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+    cleanup();
     vi.useRealTimers();
     vi.restoreAllMocks();
 });

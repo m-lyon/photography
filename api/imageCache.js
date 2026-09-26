@@ -22,6 +22,8 @@ const TRANSIENT_ERROR_CODES = ['ENOSPC', 'EMFILE', 'ENFILE', 'EAGAIN', 'EBUSY', 
 // Backoff between attempts at the first scan, which fails if the images directory is missing
 const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 60000;
+// A temp file younger than this may still be being written by a concurrently running instance
+const TEMP_FILE_MAX_AGE_MS = 60000;
 
 /**
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants
@@ -144,7 +146,8 @@ class ImageCache {
         // Second pass generates any missing variants, one image at a time
         for (const entry of entries.values()) {
             if (!this.cacheWritable) return;
-            if (entry.placeholder || entry.failed) continue;
+            if (entry.failed) continue;
+            if (entry.placeholder && (await this.cachedFilesExist(entry))) continue;
             try {
                 await this.generate(entry);
             } catch (error) {
@@ -158,6 +161,21 @@ class ImageCache {
         }
 
         await this.prune();
+    }
+
+    /** True if every file a reused entry advertises is still on disk. */
+    async cachedFilesExist(entry) {
+        const files = [`${entry.key}.placeholder.webp`, ...entry.variants.map((v) => v.file)];
+        for (const file of files) {
+            try {
+                await fsp.access(path.join(this.cacheDir, file));
+            } catch {
+                entry.variants = [];
+                entry.placeholder = null;
+                return false;
+            }
+        }
+        return true;
     }
 
     async readEntry(file, key) {
@@ -235,6 +253,16 @@ class ImageCache {
         }
     }
 
+    /** True if the file's mtime is older than `ms`; false if it cannot be read. */
+    async olderThan(file, ms) {
+        try {
+            const { mtimeMs } = await fsp.stat(path.join(this.cacheDir, file));
+            return Date.now() - mtimeMs > ms;
+        } catch {
+            return false;
+        }
+    }
+
     /** Deletes cached files belonging to images that were removed or replaced. */
     async prune() {
         const keys = new Set([...this.entries.values()].map((entry) => entry.key));
@@ -242,6 +270,8 @@ class ImageCache {
             const match = CACHE_FILE_PATTERN.exec(file);
             // match[3] is a leftover temp file, which is never meant to be served
             if (!match || (keys.has(match[1]) && !match[3])) continue;
+            // Another instance may still be writing a recent temp file
+            if (match[3] && !(await this.olderThan(file, TEMP_FILE_MAX_AGE_MS))) continue;
             try {
                 await fsp.rm(path.join(this.cacheDir, file), { force: true });
             } catch (error) {

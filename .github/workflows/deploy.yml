@@ -122,7 +122,7 @@ jobs:
       - name: Deploy API
         run: >
           rsync -rlt --delete --chmod=D2750,F0640
-          --exclude='test/' --exclude='.env*' --exclude='*.bak-*' --exclude='.image-cache/'
+          --exclude='test/' --exclude='.env*' --exclude='.image-cache/'
           ./api/ deploy-target:${{ env.API_TARGET }}
 
       - name: Deploy client

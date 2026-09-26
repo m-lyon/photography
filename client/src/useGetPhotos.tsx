@@ -19,6 +19,7 @@ export interface Photo extends Image {
 const RETRY_MS = 2000;
 const MAX_RETRY_MS = 30000;
 const PENDING_POLL_MS = 15000;
+const REQUEST_TIMEOUT_MS = 10000;
 
 export function useGetPhotos(): Photo[] {
     const [photos, setPhotos] = useState<Photo[]>([]);
@@ -42,7 +43,7 @@ export function useGetPhotos(): Photo[] {
 
         const fetchImages = async () => {
             try {
-                const response = await axios.get(import.meta.env.VITE_METADATA_ENDPOINT);
+                const response = await axios.get(import.meta.env.VITE_METADATA_ENDPOINT, { timeout: REQUEST_TIMEOUT_MS });
                 if (cancelled) return;
                 if (!Array.isArray(response.data)) {
                     console.error('Unexpected image metadata response');
