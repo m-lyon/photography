@@ -318,16 +318,25 @@ class ImageCache {
     /** Deletes cached files belonging to images that were removed or replaced. */
     async prune() {
         // A failed entry advertises nothing, so its files are stale and get the usual grace period
-        const keys = new Set(
-            [...this.entries.values()].filter((entry) => !entry.failed).map((entry) => entry.key)
-        );
+        const live = new Set();
+        // Entries that have not generated yet advertise no filenames, so their key is all we have
+        const pendingKeys = new Set();
+        for (const entry of this.entries.values()) {
+            if (entry.failed) continue;
+            if (entry.placeholder) {
+                live.add(`${entry.key}.placeholder.webp`);
+                for (const variant of entry.variants) live.add(variant.file);
+            } else {
+                pendingKeys.add(entry.key);
+            }
+        }
         const seen = new Set();
         for (const file of await fsp.readdir(this.cacheDir)) {
             seen.add(file);
             const match = CACHE_FILE_PATTERN.exec(file);
             // match[3] is a leftover temp file, which is never meant to be served
-            if (!match || (keys.has(match[1]) && !match[3])) {
-                // A key can become live again (a photo restored with its original mtime and size),
+            if (!match || ((live.has(file) || pendingKeys.has(match[1])) && !match[3])) {
+                // A file can become live again (a photo restored with its original mtime and size),
                 // and a stale timestamp would skip the grace period next time it is retired
                 this.retired.delete(file);
                 continue;

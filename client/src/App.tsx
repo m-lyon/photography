@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import PhotoAlbum from 'react-photo-album';
 
 import Lightbox from 'yet-another-react-lightbox';
@@ -25,6 +25,11 @@ export default function App() {
     const slides = useMemo(() => photos.map((photo) => ({ ...photo, srcSet: undefined })), [photos]);
     const index = selectedSrc === null ? -1 : slides.findIndex((slide) => slide.src === selectedSrc);
 
+    // Otherwise the lightbox would reopen on the stale selection if that src ever came back
+    useEffect(() => {
+        if (selectedSrc !== null && index < 0) setSelectedSrc(null);
+    }, [selectedSrc, index]);
+
     return (
         <>
             <header style={{ visibility: 'hidden' }}>Photos</header>
@@ -41,6 +46,9 @@ export default function App() {
                 open={index >= 0}
                 index={index}
                 close={() => setSelectedSrc(null)}
+                // Metadata refreshes replace the slides array, which makes the lightbox reset to
+                // `index`; following the current slide keeps that reset a no-op
+                on={{ view: ({ index }) => setSelectedSrc(slides[index]?.src ?? null) }}
                 // enable optional lightbox plugins
                 plugins={[Fullscreen, Slideshow, Thumbnails, Zoom]}
             />

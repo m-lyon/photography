@@ -323,3 +323,17 @@ test('gives up on a transient failure that keeps repeating', async () => {
 
     assert.equal(cache.list()[0].failed, true);
 });
+
+test('prune removes variant widths a live entry no longer advertises', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    await cache.refresh();
+    const { key } = cache.list()[0];
+    // A width left behind by an older VARIANT_WIDTHS still belongs to a live key
+    const stale = `${key}.123.webp`;
+    fs.writeFileSync(path.join(cacheDir, stale), 'stale');
+
+    await pruneAfterGrace(cache);
+    assert.ok(!fs.existsSync(path.join(cacheDir, stale)));
+    assert.ok(fs.existsSync(path.join(cacheDir, `${key}.placeholder.webp`)));
+});
