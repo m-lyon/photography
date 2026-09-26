@@ -52,8 +52,19 @@ test('hides the image behind the placeholder until it loads', () => {
     expect(placeholder.className).toContain('blur-up__placeholder--hidden');
 });
 
-test('reveals the image even if it fails to load', () => {
+test('falls back to the original and keeps the placeholder when a variant fails', () => {
     const { image, placeholder } = renderPhoto();
+    fireEvent.error(image);
+    expect(image.getAttribute('srcset')).toBe(null);
+    expect(image.getAttribute('sizes')).toBe(null);
+    expect(image.getAttribute('src')).toBe(photo.src);
+    expect(image.className).not.toContain('blur-up__image--loaded');
+    expect(placeholder.className).not.toContain('blur-up__placeholder--hidden');
+});
+
+test('reveals the image once the original fails too', () => {
+    const { image, placeholder } = renderPhoto();
+    fireEvent.error(image);
     fireEvent.error(image);
     expect(image.className).toContain('blur-up__image--loaded');
     expect(placeholder.className).toContain('blur-up__placeholder--hidden');

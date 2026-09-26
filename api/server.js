@@ -4,6 +4,13 @@ require('dotenv-flow/config');
 const { ImageCache } = require('./imageCache');
 const { createApp } = require('./app');
 
+// Without these the API would come up serving unusable metadata, so fail fast instead
+const missing = ['IMAGES_DIR', 'DOMAIN', 'PORT'].filter((name) => !process.env[name]);
+if (missing.length) {
+    console.error(`Missing required environment variables: ${missing.join(', ')}`);
+    process.exit(1);
+}
+
 const { WHITELISTED_DOMAINS, IMAGES_DIR, CACHE_DIR, DOMAIN, PORT } = process.env;
 
 const imageCache = new ImageCache({

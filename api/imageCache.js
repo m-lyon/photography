@@ -27,9 +27,12 @@ const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 60000;
 // A temp file younger than this may still be being written by a concurrently running instance
 const TEMP_FILE_MAX_AGE_MS = 60000;
-// Loaded pages keep a srcSet of the old variants until they refresh their metadata, so stale
-// files are only deleted once they have been retired for longer than that refresh interval
-const PRUNE_GRACE_MS = 6 * 60 * 1000;
+// Must match REFRESH_MS in client/src/useGetPhotos.tsx
+const CLIENT_REFRESH_MS = 5 * 60 * 1000;
+// Loaded pages keep a srcSet of the old variants until they refresh their metadata, so stale files
+// are only deleted once they have been retired for several of those refresh intervals, leaving room
+// for a client whose refresh failed and backed off or whose tab was suspended
+const PRUNE_GRACE_MS = 3 * CLIENT_REFRESH_MS;
 
 /**
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants

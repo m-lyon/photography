@@ -140,10 +140,11 @@ jobs:
               [ "$code" = 200 ] || return 1
               printf '%s' "$body" | sed '$d' | jq -e "$1" >/dev/null
           }
-          # An empty array means the API cannot see any photos
+          # An empty array means the API cannot see any photos, and a src that is not an absolute
+          # URL means DOMAIN is misconfigured, which leaves the gallery blank
           for i in 1 2 3 4 5 6; do
               sleep 5
-              check 'length > 0' && break
+              check 'length > 0 and all(.src | startswith("https://"))' && break
               [ "$i" = 6 ] && exit 1
           done
           # A missing placeholder means variants are not being generated, either because the cache

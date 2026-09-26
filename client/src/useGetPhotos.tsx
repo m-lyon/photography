@@ -20,7 +20,8 @@ const RETRY_MS = 2000;
 const MAX_RETRY_MS = 30000;
 const PENDING_POLL_MS = 15000;
 // Variant URLs are content-keyed, so a tab left open would keep a srcSet whose files have been
-// pruned; a slow background refresh picks up the new keys
+// pruned; a slow background refresh picks up the new keys. The server prunes a retired variant
+// after a multiple of this interval, so keep CLIENT_REFRESH_MS in api/imageCache.js in step.
 const REFRESH_MS = 5 * 60 * 1000;
 const REQUEST_TIMEOUT_MS = 10000;
 

@@ -7,12 +7,20 @@ const sharp = require('sharp');
 
 const { ImageCache } = require('../imageCache');
 
-function setup() {
+function setup({ createImagesDir = true } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'imagecache-'));
     const imagesDir = path.join(root, 'images');
     const cacheDir = path.join(root, 'cache');
-    fs.mkdirSync(imagesDir);
+    if (createImagesDir) fs.mkdirSync(imagesDir);
     return { imagesDir, cacheDir, cache: new ImageCache({ imagesDir, cacheDir }) };
+}
+
+async function waitFor(predicate, timeoutMs = 10000) {
+    const deadline = Date.now() + timeoutMs;
+    while (!predicate()) {
+        assert.ok(Date.now() < deadline, 'timed out waiting for condition');
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
 }
 
 // prune keeps stale files for a grace period, so expire it and prune again
@@ -201,4 +209,29 @@ test('prune keeps stale variants until clients have had time to refresh', async 
 
     await pruneAfterGrace(cache);
     assert.ok(!fs.readdirSync(cacheDir).some((file) => file.startsWith(`${key}.`)));
+});
+
+test('retries the first scan and arms the watcher once the images directory appears', async () => {
+    const { imagesDir, cache } = setup({ createImagesDir: false });
+
+    await cache.refresh();
+    assert.equal(cache.scanned, false);
+    assert.ok(cache.retryTimer);
+    // watch() cannot attach to a directory that does not exist yet
+    cache.watch(10);
+    assert.ok(!cache.watcher);
+
+    fs.mkdirSync(imagesDir);
+    await writeImage(imagesDir, 'a.jpg');
+
+    await waitFor(() => cache.scanned && cache.watcher);
+    try {
+        assert.deepEqual(
+            cache.list().map((entry) => entry.file),
+            ['a.jpg']
+        );
+        assert.match(cache.list()[0].placeholder, /^data:image\/webp;base64,/);
+    } finally {
+        cache.watcher.close();
+    }
 });
