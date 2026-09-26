@@ -10,7 +10,8 @@ permissions:
   contents: read
 
 concurrency:
-  group: deploy-${{ github.ref }}
+  # One group for the deploy target, so two runs never touch the server at once
+  group: deploy-production
   cancel-in-progress: false
 
 env:
@@ -48,7 +49,7 @@ jobs:
     # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
     runs-on: ubuntu-22.04
     environment: production
-    if: github.event_name != 'pull_request'
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: read
       id-token: write # lets the Tailscale action authenticate with GitHub's OIDC token
@@ -121,9 +122,7 @@ jobs:
       - name: Deploy API
         run: >
           rsync -rlt --delete --chmod=D2750,F0640
-          --include='server.js' --include='app.js' --include='imageCache.js' --include='.nvmrc'
-          --include='package.json' --include='package-lock.json'
-          --include='node_modules/***' --exclude='*'
+          --exclude='test/' --exclude='.env*' --exclude='*.bak-*' --exclude='.image-cache/'
           ./api/ deploy-target:${{ env.API_TARGET }}
 
       - name: Deploy client
@@ -136,7 +135,7 @@ jobs:
         run: |
           for i in 1 2 3 4 5 6; do
               sleep 5
-              body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata)
+              body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
               code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
               # A 200 with an empty array means the API cannot see any photos, which is a failure

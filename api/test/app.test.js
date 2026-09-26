@@ -27,7 +27,11 @@ async function get(app, url) {
     await new Promise((resolve) => server.once('listening', resolve));
     try {
         const response = await fetch(`http://127.0.0.1:${server.address().port}${url}`);
-        return { status: response.status, body: await response.text() };
+        return {
+            status: response.status,
+            body: await response.text(),
+            cacheControl: response.headers.get('cache-control'),
+        };
     } finally {
         server.close();
     }
@@ -70,4 +74,20 @@ test('metadata omits srcSet and placeholder before variants exist', async () => 
     const [photo] = JSON.parse(response.body);
     assert.equal(photo.srcSet, undefined);
     assert.equal(photo.placeholder, undefined);
+});
+
+test('variant URLs from metadata are served with immutable caching', async () => {
+    const { imagesDir, cache, app } = setup();
+    // A space and a '#' exercise the URL encoding between /metadata and express.static
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'a b#1.jpg'));
+    await cache.refresh();
+
+    const [photo] = JSON.parse((await get(app, '/metadata')).body);
+    const variant = photo.srcSet[0];
+    const response = await get(app, new URL(variant.src).pathname);
+    assert.equal(response.status, 200);
+    assert.match(response.cacheControl, /max-age=31536000/);
+    assert.match(response.cacheControl, /immutable/);
 });

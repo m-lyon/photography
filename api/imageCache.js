@@ -17,6 +17,10 @@ const NO_VARIANTS_PATTERN = /\.gif$/i;
 // Names generate() gives its output; anything else in the cache directory is left alone
 const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\.tmp)?$/;
 
+// Backoff between attempts at the first scan, which fails if the images directory is missing
+const INITIAL_RETRY_MS = 1000;
+const MAX_RETRY_MS = 60000;
+
 /**
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants
  * plus a blur-up placeholder for each one into `cacheDir`.
@@ -62,7 +66,11 @@ class ImageCache {
             return this.refreshing;
         }
         this.refreshing = this.scan()
-            .catch((error) => console.log('Error refreshing image cache:', error))
+            .catch((error) => {
+                console.log('Error refreshing image cache:', error);
+                // The images directory may not be mounted yet, and nothing else would retry
+                if (!this.scanned) this.retryInitialScan();
+            })
             .finally(() => {
                 this.refreshing = null;
                 if (this.refreshQueued) {
@@ -73,8 +81,22 @@ class ImageCache {
         return this.refreshing;
     }
 
+    /** Re-runs the first scan with backoff; until it succeeds /metadata answers 503. */
+    retryInitialScan() {
+        this.retryMs = this.retryMs ? Math.min(this.retryMs * 2, MAX_RETRY_MS) : INITIAL_RETRY_MS;
+        const timer = setTimeout(async () => {
+            await this.refresh();
+            // watch() also fails while the directory is missing, so arm it once the scan works
+            if (this.scanned && this.watching && !this.watcher) this.watch(this.debounceMs);
+        }, this.retryMs);
+        // Do not hold the process (or a test run) open just to retry
+        timer.unref?.();
+    }
+
     /** Refreshes whenever the images directory changes (debounced). */
     watch(debounceMs = 2000) {
+        this.watching = true;
+        this.debounceMs = debounceMs;
         let timer;
         try {
             this.watcher = fs.watch(this.imagesDir, () => {
@@ -192,8 +214,9 @@ class ImageCache {
             await fsp.writeFile(temp, buffer);
             await fsp.rename(temp, target);
         } catch (error) {
-            // Nothing will be writable later either, so stop re-encoding on every scan
-            if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(error.code)) {
+            // These will not become writable later, so stop re-encoding on every scan.
+            // ENOSPC is deliberately excluded: freeing space should let generation resume.
+            if (['EACCES', 'EPERM', 'EROFS'].includes(error.code)) {
                 this.cacheWritable = false;
                 console.log('Cache directory is not writable, serving originals only:', error.message);
             }
