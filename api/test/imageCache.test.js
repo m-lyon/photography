@@ -282,3 +282,44 @@ test('regenerates variants whose files were deleted from the cache', async () =>
         assert.ok(fs.existsSync(path.join(cacheDir, file)), `${file} missing`);
     }
 });
+
+test('retries a transient generation failure instead of latching it', async () => {
+    const { imagesDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    const generate = cache.generate.bind(cache);
+    let failures = 0;
+    cache.generate = async (entry) => {
+        if (failures === 0) {
+            failures += 1;
+            const error = new Error('no space left on device');
+            error.code = 'ENOSPC';
+            throw error;
+        }
+        return generate(entry);
+    };
+
+    await cache.refresh();
+    let [entry] = cache.list();
+    assert.equal(entry.failed, false);
+    assert.equal(entry.placeholder, null);
+
+    await cache.refresh();
+    [entry] = cache.list();
+    assert.equal(entry.failed, false);
+    assert.equal(failures, 1);
+    assert.match(entry.placeholder, /^data:image\/webp;base64,/);
+});
+
+test('gives up on a transient failure that keeps repeating', async () => {
+    const { imagesDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    cache.generate = async () => {
+        const error = new Error('no space left on device');
+        error.code = 'ENOSPC';
+        throw error;
+    };
+
+    for (let i = 0; i < 3; i += 1) await cache.refresh();
+
+    assert.equal(cache.list()[0].failed, true);
+});

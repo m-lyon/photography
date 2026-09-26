@@ -16,11 +16,14 @@ import { useGetPhotos } from './useGetPhotos.tsx';
 import { BlurUpPhoto } from './BlurUpPhoto.tsx';
 
 export default function App() {
-    const [index, setIndex] = useState(-1);
+    // Tracked by src rather than position: metadata refreshes can add or remove photos while the
+    // lightbox is open, which would shift a stored index onto a different photo
+    const [selectedSrc, setSelectedSrc] = useState<string | null>(null);
     const photos = useGetPhotos();
     // Variant URLs can 404 once pruned, and the lightbox has no srcSet fallback; it wants full
     // detail anyway, and the original's URL is stable
     const slides = useMemo(() => photos.map((photo) => ({ ...photo, srcSet: undefined })), [photos]);
+    const index = selectedSrc === null ? -1 : slides.findIndex((slide) => slide.src === selectedSrc);
 
     return (
         <>
@@ -28,7 +31,7 @@ export default function App() {
             <PhotoAlbum
                 photos={photos}
                 layout='rows'
-                onClick={({ index }) => setIndex(index)}
+                onClick={({ photo }) => setSelectedSrc(photo.src)}
                 spacing={10}
                 renderPhoto={(props) => <BlurUpPhoto {...props} />}
                 componentsProps={{ imageProps: { loading: 'lazy', decoding: 'async' } }}
@@ -37,7 +40,7 @@ export default function App() {
                 slides={slides}
                 open={index >= 0}
                 index={index}
-                close={() => setIndex(-1)}
+                close={() => setSelectedSrc(null)}
                 // enable optional lightbox plugins
                 plugins={[Fullscreen, Slideshow, Thumbnails, Zoom]}
             />

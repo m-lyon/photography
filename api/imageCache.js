@@ -18,6 +18,9 @@ const NO_VARIANTS_PATTERN = /\.gif$/i;
 const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\..+\.tmp)?$/;
 // I/O conditions that can clear on their own, so generation is retried on the next scan
 const TRANSIENT_ERROR_CODES = ['ENOSPC', 'EMFILE', 'ENFILE', 'EAGAIN', 'EBUSY', 'ENOENT'];
+// A condition reporting a transient code can still be permanent (a disk that stays full), so
+// give up after this many consecutive failures rather than retrying and re-encoding forever
+const MAX_TRANSIENT_FAILURES = 3;
 
 // Fallback rescan interval: the watcher can miss events or close on error, and pruning a
 // retired file needs a later scan than the one that retired it
@@ -156,7 +159,8 @@ class ImageCache {
         if (!this.cacheWritable) this.probeCacheWritable();
         const previousSize = this.entries.size;
         const all = await fsp.readdir(this.imagesDir);
-        const files = all.filter((file) => IMAGE_PATTERN.test(file));
+        // readdir order is filesystem-dependent, so sort for a stable gallery order
+        const files = all.filter((file) => IMAGE_PATTERN.test(file)).sort((a, b) => a.localeCompare(b));
         // An empty directory where there were photos means it is probably unmounted, not emptied,
         // so keep the index and the cache rather than wiping every variant
         if (files.length === 0 && previousSize > 0) return;
@@ -189,16 +193,18 @@ class ImageCache {
             if (entry.placeholder && (await this.cachedFilesExist(entry))) continue;
             try {
                 await this.generate(entry);
+                entry.transientFailures = 0;
             } catch (error) {
                 console.log(`Error generating variants for ${entry.file}:`, error.message);
-                // Permanent failures are latched so they are not retried on every scan, and so
-                // clients stop waiting; transient I/O errors are left to retry on the next scan
-                if (this.cacheWritable && !TRANSIENT_ERROR_CODES.includes(error.code)) {
-                    entry.failed = true;
-                    // Nothing will ever advertise the files an abandoned attempt did write, and
-                    // prune() leaves them alone while the key is live, so remove them here
-                    await this.removeCacheFiles(entry.key);
+                if (!this.cacheWritable) continue;
+                // Transient I/O errors are retried on the next scan, but only a few times
+                if (TRANSIENT_ERROR_CODES.includes(error.code)) {
+                    entry.transientFailures = (entry.transientFailures || 0) + 1;
+                    if (entry.transientFailures < MAX_TRANSIENT_FAILURES) continue;
                 }
+                // Latched so it is not retried on every scan and clients stop waiting; prune()
+                // treats a failed key as stale, so anything the attempt wrote is retired
+                entry.failed = true;
             }
         }
 
@@ -233,6 +239,7 @@ class ImageCache {
             variants: [],
             placeholder: null,
             failed: false,
+            transientFailures: 0,
         };
     }
 
@@ -265,22 +272,6 @@ class ImageCache {
 
         entry.variants = variants;
         entry.placeholder = `data:image/webp;base64,${placeholder.toString('base64')}`;
-    }
-
-    /** Deletes every cached file belonging to one key, ignoring anything already gone. */
-    async removeCacheFiles(key) {
-        try {
-            for (const file of await fsp.readdir(this.cacheDir)) {
-                const match = CACHE_FILE_PATTERN.exec(file);
-                // Temp files are left to the age-based sweep in prune(): another instance may
-                // still be writing one
-                if (match && match[1] === key && !match[3]) {
-                    await fsp.rm(path.join(this.cacheDir, file), { force: true });
-                }
-            }
-        } catch (error) {
-            console.log(`Error removing cache files for ${key}:`, error.message);
-        }
     }
 
     /** Renders and writes the cached file unless it is already there. */
@@ -326,7 +317,10 @@ class ImageCache {
 
     /** Deletes cached files belonging to images that were removed or replaced. */
     async prune() {
-        const keys = new Set([...this.entries.values()].map((entry) => entry.key));
+        // A failed entry advertises nothing, so its files are stale and get the usual grace period
+        const keys = new Set(
+            [...this.entries.values()].filter((entry) => !entry.failed).map((entry) => entry.key)
+        );
         const seen = new Set();
         for (const file of await fsp.readdir(this.cacheDir)) {
             seen.add(file);

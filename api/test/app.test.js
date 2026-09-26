@@ -150,7 +150,7 @@ test('a permanently failed generation is latched, reported ready and not retried
     assert.equal(calls, 1);
 });
 
-test('a failed generation leaves no orphaned variant files behind', async () => {
+test('a failed generation retires its orphaned variant files', async () => {
     const { imagesDir, cacheDir, cache } = setup();
     await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
         .jpeg()
@@ -165,7 +165,10 @@ test('a failed generation leaves no orphaned variant files behind', async () => 
     await cache.refresh();
 
     assert.equal(cache.list()[0].failed, true);
-    // The one variant that was written is not in any srcSet, so it must not be left on disk
+    // The one variant that was written was advertised before, so clients keep the grace period
+    assert.notDeepEqual(fs.readdirSync(cacheDir), []);
+    for (const file of cache.retired.keys()) cache.retired.set(file, 0);
+    await cache.prune();
     assert.deepEqual(fs.readdirSync(cacheDir), []);
 });
 
