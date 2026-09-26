@@ -12,6 +12,7 @@ const imageCache = new ImageCache({
 });
 imageCache.refresh();
 imageCache.watch();
+imageCache.startPeriodicRefresh();
 
 const app = createApp({
     imageCache,

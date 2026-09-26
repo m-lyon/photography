@@ -19,6 +19,9 @@ const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\..+\.tmp)?$/;
 // I/O conditions that can clear on their own, so generation is retried on the next scan
 const TRANSIENT_ERROR_CODES = ['ENOSPC', 'EMFILE', 'ENFILE', 'EAGAIN', 'EBUSY', 'ENOENT'];
 
+// Fallback rescan interval: the watcher can miss events or close on error, and pruning a
+// retired file needs a later scan than the one that retired it
+const PERIODIC_REFRESH_MS = 5 * 60 * 1000;
 // Backoff between attempts at the first scan, which fails if the images directory is missing
 const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 60000;
@@ -120,14 +123,28 @@ class ImageCache {
                 timer = setTimeout(() => this.refresh(), debounceMs);
             });
             // Without a listener a watcher error (directory removed, inotify limit) would be fatal
-            this.watcher.on('error', (error) => {
-                console.log('Images directory watch failed, new images need a restart:', error.message);
-                this.watcher.close();
-                this.watcher = null;
+            const watcher = this.watcher;
+            watcher.on('error', (error) => {
+                console.log('Images directory watch failed, relying on periodic rescans:', error.message);
+                watcher.close();
+                if (this.watcher === watcher) this.watcher = null;
             });
         } catch (error) {
             console.log('Unable to watch images directory, new images need a restart:', error);
         }
+    }
+
+    /** Rescans periodically so missed events, transient failures and pruning still make progress. */
+    startPeriodicRefresh(intervalMs = PERIODIC_REFRESH_MS) {
+        if (this.refreshTimer) return;
+        this.refreshTimer = setInterval(() => this.refresh(), intervalMs);
+        // Do not hold the process (or a test run) open just to rescan
+        this.refreshTimer.unref?.();
+    }
+
+    stopPeriodicRefresh() {
+        clearInterval(this.refreshTimer);
+        this.refreshTimer = null;
     }
 
     async scan() {

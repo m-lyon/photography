@@ -133,14 +133,24 @@ jobs:
 
       - name: Health check
         run: |
-          for i in 1 2 3 4 5 6; do
-              sleep 5
+          check() {
               body=$(curl -s -w '\n%{http_code}' https://photos.mattlyon.co.uk/api/metadata || true)
               code=$(printf '%s' "$body" | tail -n1)
               echo "attempt $i: $code"
-              # An empty array means the API cannot see any photos, and a missing placeholder means
-              # the cache directory is not writable, so variants are silently disabled
-              [ "$code" = 200 ] && printf '%s' "$body" | sed '$d' |
-                  jq -e 'length > 0 and any(.placeholder != null)' >/dev/null && exit 0
+              [ "$code" = 200 ] || return 1
+              printf '%s' "$body" | sed '$d' | jq -e "$1" >/dev/null
+          }
+          # An empty array means the API cannot see any photos
+          for i in 1 2 3 4 5 6; do
+              sleep 5
+              check 'length > 0' && break
+              [ "$i" = 6 ] && exit 1
+          done
+          # A missing placeholder means variants are not being generated, either because the cache
+          # directory is not writable or because generation keeps failing; first-time generation of
+          # a cold cache can take a while, so allow considerably longer for one to appear
+          for i in $(seq 1 20); do
+              check 'any(.placeholder != null)' && exit 0
+              sleep 15
           done
           exit 1
