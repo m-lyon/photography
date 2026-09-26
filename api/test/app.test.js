@@ -91,3 +91,23 @@ test('variant URLs from metadata are served with immutable caching', async () =>
     assert.match(response.cacheControl, /max-age=31536000/);
     assert.match(response.cacheControl, /immutable/);
 });
+
+test('variantsReady is false while generation is pending and true once it completes', async () => {
+    const { imagesDir, cache, app } = setup();
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'a.jpg'));
+
+    const generate = cache.generate;
+    cache.generate = async () => {};
+    await cache.refresh();
+    const [pending] = JSON.parse((await get(app, '/metadata')).body);
+    assert.equal(pending.variantsReady, false);
+    assert.equal(pending.srcSet, undefined);
+
+    cache.generate = generate;
+    await cache.refresh();
+    const [ready] = JSON.parse((await get(app, '/metadata')).body);
+    assert.equal(ready.variantsReady, true);
+    assert.ok(ready.srcSet.length > 0);
+});

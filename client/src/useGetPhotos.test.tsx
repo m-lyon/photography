@@ -39,14 +39,17 @@ test('keeps polling while a photo is still generating its variants', async () =>
     expect(get).toHaveBeenCalledTimes(2);
 });
 
-test('gives up after the retry budget when the request keeps failing', async () => {
+test('keeps retrying with a capped backoff while the request fails', async () => {
     get.mockRejectedValue(new Error('offline'));
 
     renderHook(() => useGetPhotos());
     await act(() => vi.advanceTimersByTimeAsync(10 * 60 * 1000));
+    const calls = get.mock.calls.length;
+    expect(calls).toBeGreaterThan(11);
 
-    // The first call plus MAX_RETRIES
-    expect(get).toHaveBeenCalledTimes(11);
+    // Still retrying, so a long outage recovers without a reload
+    await act(() => vi.advanceTimersByTimeAsync(10 * 60 * 1000));
+    expect(get.mock.calls.length).toBeGreaterThan(calls);
 });
 
 test('schedules no further fetch after unmount', async () => {

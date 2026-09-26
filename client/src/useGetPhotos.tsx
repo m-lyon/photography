@@ -17,8 +17,7 @@ export interface Photo extends Image {
 
 // The API answers 503 while it is still indexing, and reports variantsReady per photo after that
 const RETRY_MS = 2000;
-// Only hard failures give up; generating variants for a large album can take much longer
-const MAX_RETRIES = 10;
+const MAX_RETRY_MS = 30000;
 const PENDING_POLL_MS = 15000;
 
 export function useGetPhotos(): Photo[] {
@@ -29,12 +28,11 @@ export function useGetPhotos(): Photo[] {
         let timer: ReturnType<typeof setTimeout>;
         let attempt = 0;
 
-        // Network errors and bad responses get a bounded number of tries
+        // Network errors and bad responses back off, but keep retrying so the gallery recovers
+        // from an outage of any length without a reload
         const retry = () => {
             attempt += 1;
-            if (!cancelled && attempt <= MAX_RETRIES) {
-                timer = setTimeout(fetchImages, RETRY_MS * attempt);
-            }
+            if (!cancelled) timer = setTimeout(fetchImages, Math.min(RETRY_MS * attempt, MAX_RETRY_MS));
         };
 
         // Variants are still generating, which has no useful deadline, so keep asking slowly

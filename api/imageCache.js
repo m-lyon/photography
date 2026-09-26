@@ -16,6 +16,8 @@ const IMAGE_PATTERN = /\.(jpe?g|png|gif)$/i;
 const NO_VARIANTS_PATTERN = /\.gif$/i;
 // Names generate() gives its output; anything else in the cache directory is left alone
 const CACHE_FILE_PATTERN = /^(.+)\.(\d+|placeholder)\.webp(\..+\.tmp)?$/;
+// I/O conditions that can clear on their own, so generation is retried on the next scan
+const TRANSIENT_ERROR_CODES = ['ENOSPC', 'EMFILE', 'ENFILE', 'EAGAIN', 'EBUSY', 'ENOENT'];
 
 // Backoff between attempts at the first scan, which fails if the images directory is missing
 const INITIAL_RETRY_MS = 1000;
@@ -147,8 +149,11 @@ class ImageCache {
                 await this.generate(entry);
             } catch (error) {
                 console.log(`Error generating variants for ${entry.file}:`, error.message);
-                // Do not retry this key on every scan, and let clients stop waiting for it
-                if (this.cacheWritable) entry.failed = true;
+                // Permanent failures are latched so they are not retried on every scan, and so
+                // clients stop waiting; transient I/O errors are left to retry on the next scan
+                if (this.cacheWritable && !TRANSIENT_ERROR_CODES.includes(error.code)) {
+                    entry.failed = true;
+                }
             }
         }
 
