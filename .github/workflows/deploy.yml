@@ -122,7 +122,7 @@ jobs:
       - name: Deploy API
         run: >
           rsync -rlt --delete --chmod=D2750,F0640
-          --exclude='test/' --exclude='.env*' --exclude='.image-cache/'
+          --exclude='/test/' --exclude='.env*' --exclude='.image-cache/'
           ./api/ deploy-target:${{ env.API_TARGET }}
 
       - name: Deploy client
@@ -156,4 +156,11 @@ jobs:
               check 'any(.placeholder != null)' && exit 0
               sleep 15
           done
+          # No placeholder can also mean the cache directory is deliberately not writable, which
+          # is a supported (if degraded) configuration: the API reports variants as ready then
+          if check 'all(.variantsReady != false)'; then
+              echo '::warning::No placeholders: variant generation is disabled, serving originals only'
+              exit 0
+          fi
+          echo '::error::Variant generation is still pending after several minutes'
           exit 1

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import PhotoAlbum from 'react-photo-album';
 
 import Lightbox from 'yet-another-react-lightbox';
@@ -18,6 +18,9 @@ import { BlurUpPhoto } from './BlurUpPhoto.tsx';
 export default function App() {
     const [index, setIndex] = useState(-1);
     const photos = useGetPhotos();
+    // Variant URLs can 404 once pruned, and the lightbox has no srcSet fallback; it wants full
+    // detail anyway, and the original's URL is stable
+    const slides = useMemo(() => photos.map((photo) => ({ ...photo, srcSet: undefined })), [photos]);
 
     return (
         <>
@@ -30,7 +33,7 @@ export default function App() {
                 renderPhoto={(props) => <BlurUpPhoto {...props} />}
             />
             <Lightbox
-                slides={photos}
+                slides={slides}
                 open={index >= 0}
                 index={index}
                 close={() => setIndex(-1)}

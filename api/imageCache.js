@@ -302,6 +302,9 @@ class ImageCache {
             await fsp.rm(temp, { force: true }).catch(() => {});
             // These will not become writable later, so stop re-encoding on every scan.
             // ENOSPC is deliberately excluded: freeing space should let generation resume.
+            // Nothing else re-creates the cache directory if it is removed under the running
+            // service, so every later write would fail with ENOENT
+            if (error.code === 'ENOENT') this.probeCacheWritable();
             if (['EACCES', 'EPERM', 'EROFS'].includes(error.code)) {
                 this.cacheWritable = false;
                 console.log('Cache directory is not writable, serving originals only:', error.message);

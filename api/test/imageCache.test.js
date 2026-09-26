@@ -235,3 +235,50 @@ test('retries the first scan and arms the watcher once the images directory appe
         cache.watcher.close();
     }
 });
+
+test('coalesces concurrent refreshes into a single follow-up scan', async () => {
+    const { imagesDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    let scans = 0;
+    let release;
+    const blocked = new Promise((resolve) => {
+        release = resolve;
+    });
+    const scan = cache.scan.bind(cache);
+    cache.scan = async () => {
+        scans += 1;
+        if (scans === 1) await blocked;
+        return scan();
+    };
+
+    const first = cache.refresh();
+    cache.refresh();
+    cache.refresh();
+    cache.refresh();
+    release();
+    await first;
+    await waitFor(() => !cache.refreshing);
+
+    assert.equal(scans, 2);
+});
+
+test('regenerates variants whose files were deleted from the cache', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    await cache.refresh();
+    const { key } = cache.list()[0];
+    fs.unlinkSync(path.join(cacheDir, `${key}.400.webp`));
+
+    await cache.refresh();
+
+    const [entry] = cache.list();
+    assert.equal(entry.key, key);
+    assert.deepEqual(
+        entry.variants.map((variant) => variant.width),
+        [400, 800]
+    );
+    assert.match(entry.placeholder, /^data:image\/webp;base64,/);
+    for (const file of [`${key}.400.webp`, `${key}.800.webp`, `${key}.placeholder.webp`]) {
+        assert.ok(fs.existsSync(path.join(cacheDir, file)), `${file} missing`);
+    }
+});

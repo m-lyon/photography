@@ -45,6 +45,8 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
                         : undefined,
                 };
             });
+        // Clients poll this while variants generate; revalidating keeps unchanged polls to a 304
+        res.set('Cache-Control', 'no-cache');
         res.json(imagesMetadata);
     });
 
