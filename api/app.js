@@ -24,13 +24,13 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
         if (!imageCache.scanned) return res.status(503).send('Image index not ready');
         const imagesMetadata = imageCache
             .list()
-            .map(({ file, width, height, variants, placeholder }) => {
+            .map(({ file, width, height, variants, placeholder, failed }) => {
                 const original = { src: imageUrl(file), width, height };
                 return {
                     ...original,
                     placeholder: placeholder || undefined,
                     // False only while generation is still pending, so clients know when to stop polling
-                    variantsReady: !imageCache.cacheWritable || Boolean(placeholder),
+                    variantsReady: !imageCache.cacheWritable || Boolean(placeholder) || Boolean(failed),
                     // Smallest first, ending with the original so the lightbox can zoom to full detail
                     srcSet: variants.length
                         ? [

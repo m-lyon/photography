@@ -12,6 +12,12 @@
   filter: blur(16px);
   /* Scale up slightly so the blur doesn't fade out at the edges */
   transform: scale(1.1);
+  transition: opacity 400ms ease-out;
+}
+
+/* Otherwise it stays visible through transparent regions of the loaded image */
+.blur-up__placeholder--hidden {
+  opacity: 0;
 }
 
 .blur-up__image {
@@ -28,7 +34,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .blur-up__image {
+  .blur-up__image,
+  .blur-up__placeholder {
     transition: none;
   }
 }

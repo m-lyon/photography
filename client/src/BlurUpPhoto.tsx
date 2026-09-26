@@ -13,7 +13,7 @@ export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProp
         <div className='blur-up' style={{ ...wrapperStyle, cursor: style?.cursor }}>
             {photo.placeholder && (
                 <div
-                    className='blur-up__placeholder'
+                    className={`blur-up__placeholder${loaded ? ' blur-up__placeholder--hidden' : ''}`}
                     style={{ backgroundImage: `url(${photo.placeholder})` }}
                     aria-hidden
                 />

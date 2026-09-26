@@ -142,11 +142,13 @@ class ImageCache {
         // Second pass generates any missing variants, one image at a time
         for (const entry of entries.values()) {
             if (!this.cacheWritable) return;
-            if (entry.placeholder) continue;
+            if (entry.placeholder || entry.failed) continue;
             try {
                 await this.generate(entry);
             } catch (error) {
                 console.log(`Error generating variants for ${entry.file}:`, error.message);
+                // Do not retry this key on every scan, and let clients stop waiting for it
+                if (this.cacheWritable) entry.failed = true;
             }
         }
 
@@ -165,6 +167,7 @@ class ImageCache {
             height: rotated ? metadata.width : metadata.height,
             variants: [],
             placeholder: null,
+            failed: false,
         };
     }
 
@@ -174,15 +177,16 @@ class ImageCache {
         const widths = NO_VARIANTS_PATTERN.test(entry.file)
             ? []
             : VARIANT_WIDTHS.filter((width) => width < entry.width);
-        const variants = await Promise.all(
-            widths.map(async (width) => {
-                const file = `${entry.key}.${width}.webp`;
-                await this.writeIfMissing(file, () =>
-                    image.clone().resize({ width }).webp({ quality: VARIANT_QUALITY }).toBuffer()
-                );
-                return { file, width, height: Math.round((entry.height * width) / entry.width) };
-            })
-        );
+        // One width at a time: each clone re-decodes the original, so parallel encodes multiply
+        // peak memory and stall the event loop while the same process is serving requests
+        const variants = [];
+        for (const width of widths) {
+            const file = `${entry.key}.${width}.webp`;
+            await this.writeIfMissing(file, () =>
+                image.clone().resize({ width }).webp({ quality: VARIANT_QUALITY }).toBuffer()
+            );
+            variants.push({ file, width, height: Math.round((entry.height * width) / entry.width) });
+        }
 
         const placeholderFile = `${entry.key}.placeholder.webp`;
         await this.writeIfMissing(placeholderFile, () =>
@@ -215,6 +219,7 @@ class ImageCache {
             await fsp.writeFile(temp, buffer);
             await fsp.rename(temp, target);
         } catch (error) {
+            await fsp.rm(temp, { force: true }).catch(() => {});
             // These will not become writable later, so stop re-encoding on every scan.
             // ENOSPC is deliberately excluded: freeing space should let generation resume.
             if (['EACCES', 'EPERM', 'EROFS'].includes(error.code)) {
@@ -230,7 +235,8 @@ class ImageCache {
         const keys = new Set([...this.entries.values()].map((entry) => entry.key));
         for (const file of await fsp.readdir(this.cacheDir)) {
             const match = CACHE_FILE_PATTERN.exec(file);
-            if (!match || keys.has(match[1])) continue;
+            // match[3] is a leftover temp file, which is never meant to be served
+            if (!match || (keys.has(match[1]) && !match[3])) continue;
             try {
                 await fsp.rm(path.join(this.cacheDir, file), { force: true });
             } catch (error) {

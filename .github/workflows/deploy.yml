@@ -32,10 +32,11 @@ jobs:
           npm ci
           npm test
 
-      - name: Build and lint client
+      - name: Test, build and lint client
         working-directory: ./client
         run: |
           npm ci
+          npm test
           npm run build
           npm run lint
 
