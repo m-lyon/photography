@@ -9,7 +9,8 @@ function createApp({ imageCache, imagesDir, domain, whitelist = [] }) {
             if (!origin || whitelist.indexOf(origin) !== -1) {
                 callback(null, true);
             } else {
-                callback(new Error(`Domain '${origin}' not allowed by CORS`));
+                // No CORS headers rather than an error, which would surface as a 500
+                callback(null, false);
             }
         },
         credentials: true,

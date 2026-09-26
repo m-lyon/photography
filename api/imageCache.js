@@ -87,14 +87,17 @@ class ImageCache {
 
     /** Re-runs the first scan with backoff; until it succeeds /metadata answers 503. */
     retryInitialScan() {
+        if (this.retryTimer) return;
         this.retryMs = this.retryMs ? Math.min(this.retryMs * 2, MAX_RETRY_MS) : INITIAL_RETRY_MS;
-        const timer = setTimeout(async () => {
+        this.retryTimer = setTimeout(async () => {
+            this.retryTimer = null;
             await this.refresh();
+            if (this.scanned) this.retryMs = 0;
             // watch() also fails while the directory is missing, so arm it once the scan works
             if (this.scanned && this.watching && !this.watcher) this.watch(this.debounceMs);
         }, this.retryMs);
         // Do not hold the process (or a test run) open just to retry
-        timer.unref?.();
+        this.retryTimer.unref?.();
     }
 
     /** Refreshes whenever the images directory changes (debounced). */
@@ -119,6 +122,7 @@ class ImageCache {
     }
 
     async scan() {
+        const previousSize = this.entries.size;
         const all = await fsp.readdir(this.imagesDir);
         const files = all.filter((file) => IMAGE_PATTERN.test(file));
 
@@ -160,6 +164,9 @@ class ImageCache {
             }
         }
 
+        // An empty directory where there were photos means it is probably unmounted, not emptied,
+        // so keep the cache rather than wiping every variant
+        if (entries.size === 0 && previousSize > 0) return;
         await this.prune();
     }
 

@@ -74,6 +74,8 @@ test('metadata omits srcSet and placeholder before variants exist', async () => 
     const [photo] = JSON.parse(response.body);
     assert.equal(photo.srcSet, undefined);
     assert.equal(photo.placeholder, undefined);
+    // Otherwise clients would poll forever waiting for variants that will never arrive
+    assert.equal(photo.variantsReady, true);
 });
 
 test('variant URLs from metadata are served with immutable caching', async () => {

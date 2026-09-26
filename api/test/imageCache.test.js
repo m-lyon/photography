@@ -145,3 +145,21 @@ test('stops generating when the cache directory becomes read-only', { skip: proc
     assert.deepEqual(entry.variants, []);
     assert.equal(entry.placeholder, null);
 });
+
+test('prune removes stale temp files only once they are too old to be in progress', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    await cache.refresh();
+    const { key } = cache.list()[0];
+    const fresh = path.join(cacheDir, `${key}.400.webp.1234.abc.tmp`);
+    const stale = path.join(cacheDir, `${key}.800.webp.5678.def.tmp`);
+    fs.writeFileSync(fresh, '');
+    fs.writeFileSync(stale, '');
+    const old = new Date(Date.now() - 10 * 60 * 1000);
+    fs.utimesSync(stale, old, old);
+
+    await cache.prune();
+
+    assert.ok(fs.existsSync(fresh));
+    assert.ok(!fs.existsSync(stale));
+});
