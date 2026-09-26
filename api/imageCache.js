@@ -24,6 +24,9 @@ const INITIAL_RETRY_MS = 1000;
 const MAX_RETRY_MS = 60000;
 // A temp file younger than this may still be being written by a concurrently running instance
 const TEMP_FILE_MAX_AGE_MS = 60000;
+// Loaded pages keep a srcSet of the old variants until they refresh their metadata, so stale
+// files are only deleted once they have been retired for longer than that refresh interval
+const PRUNE_GRACE_MS = 6 * 60 * 1000;
 
 /**
  * Keeps an in-memory index of the images in `imagesDir` and generates resized WebP variants
@@ -41,12 +44,18 @@ class ImageCache {
         this.refreshQueued = false;
         // Set once a scan has completed; /metadata reports unavailable until then
         this.scanned = false;
-        // Without a writable cache directory the originals are still served, just without variants
+        // Stale cache file -> when it was first seen as stale, so pruning can wait out clients
+        this.retired = new Map();
+        this.probeCacheWritable();
+    }
+
+    /** Sets cacheWritable; without a writable cache the originals are still served bare. */
+    probeCacheWritable() {
         this.cacheWritable = true;
         try {
-            fs.mkdirSync(cacheDir, { recursive: true });
+            fs.mkdirSync(this.cacheDir, { recursive: true });
             // mkdirSync succeeds on an existing directory even if it cannot be written to
-            const probe = path.join(cacheDir, `.writable-${process.pid}`);
+            const probe = path.join(this.cacheDir, `.writable-${process.pid}`);
             fs.writeFileSync(probe, '');
             fs.rmSync(probe, { force: true });
         } catch (error) {
@@ -122,6 +131,8 @@ class ImageCache {
     }
 
     async scan() {
+        // A permission problem may have been fixed since the last scan gave up
+        if (!this.cacheWritable) this.probeCacheWritable();
         const previousSize = this.entries.size;
         const all = await fsp.readdir(this.imagesDir);
         const files = all.filter((file) => IMAGE_PATTERN.test(file));
@@ -279,6 +290,16 @@ class ImageCache {
             if (!match || (keys.has(match[1]) && !match[3])) continue;
             // Another instance may still be writing a recent temp file
             if (match[3] && !(await this.olderThan(file, TEMP_FILE_MAX_AGE_MS))) continue;
+            // Clients already holding this URL in a srcSet get time to pick up the new keys
+            if (!match[3]) {
+                const retiredAt = this.retired.get(file);
+                if (retiredAt === undefined) {
+                    this.retired.set(file, Date.now());
+                    continue;
+                }
+                if (Date.now() - retiredAt < PRUNE_GRACE_MS) continue;
+            }
+            this.retired.delete(file);
             try {
                 await fsp.rm(path.join(this.cacheDir, file), { force: true });
             } catch (error) {

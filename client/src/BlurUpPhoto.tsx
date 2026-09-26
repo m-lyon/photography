@@ -29,7 +29,9 @@ export function BlurUpPhoto({ photo, imageProps, wrapperStyle }: RenderPhotoProp
                 srcSet={srcSet}
                 sizes={sizes}
                 alt={alt}
-                className={`${className} blur-up__image${loaded ? ' blur-up__image--loaded' : ''}`}
+                className={[className, 'blur-up__image', loaded && 'blur-up__image--loaded']
+                    .filter(Boolean)
+                    .join(' ')}
                 onLoad={() => setLoaded(true)}
                 onError={() => setLoaded(true)}
             />

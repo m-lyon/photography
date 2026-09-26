@@ -9,33 +9,38 @@ const sharp = require('sharp');
 const { ImageCache } = require('../imageCache');
 const { createApp } = require('../app');
 
-function setup() {
+function setup({ whitelist } = {}) {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), 'app-'));
     const imagesDir = path.join(root, 'images');
     fs.mkdirSync(imagesDir);
-    const cache = new ImageCache({ imagesDir, cacheDir: path.join(root, 'cache') });
+    const cacheDir = path.join(root, 'cache');
+    const cache = new ImageCache({ imagesDir, cacheDir });
     const app = createApp({
         imageCache: cache,
         imagesDir,
         domain: 'https://example.test',
+        whitelist,
     });
-    return { imagesDir, cache, app };
+    return { imagesDir, cacheDir, cache, app };
 }
 
-async function get(app, url) {
+async function request(app, url, options) {
     const server = http.createServer(app).listen(0, '127.0.0.1');
     await new Promise((resolve) => server.once('listening', resolve));
     try {
-        const response = await fetch(`http://127.0.0.1:${server.address().port}${url}`);
+        const response = await fetch(`http://127.0.0.1:${server.address().port}${url}`, options);
         return {
             status: response.status,
             body: await response.text(),
             cacheControl: response.headers.get('cache-control'),
+            allowOrigin: response.headers.get('access-control-allow-origin'),
         };
     } finally {
         server.close();
     }
 }
+
+const get = (app, url) => request(app, url);
 
 test('metadata is unavailable until the first scan has listed the photos', async () => {
     const { app } = setup();
@@ -62,13 +67,18 @@ test('metadata returns variants smallest first with the original appended', asyn
     assert.match(photo.placeholder, /^data:image\/webp;base64,/);
 });
 
-test('metadata omits srcSet and placeholder before variants exist', async () => {
-    const { imagesDir, cache, app } = setup();
+test('metadata omits srcSet and placeholder before variants exist', { skip: process.getuid?.() === 0 }, async () => {
+    const { imagesDir, cacheDir, cache, app } = setup();
     await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
         .jpeg()
         .toFile(path.join(imagesDir, 'a.jpg'));
-    cache.cacheWritable = false;
-    await cache.refresh();
+    // A read-only cache directory, which is how generation gets disabled in production
+    fs.chmodSync(cacheDir, 0o555);
+    try {
+        await cache.refresh();
+    } finally {
+        fs.chmodSync(cacheDir, 0o755);
+    }
 
     const response = await get(app, '/metadata');
     const [photo] = JSON.parse(response.body);
@@ -112,4 +122,26 @@ test('variantsReady is false while generation is pending and true once it comple
     const [ready] = JSON.parse((await get(app, '/metadata')).body);
     assert.equal(ready.variantsReady, true);
     assert.ok(ready.srcSet.length > 0);
+});
+
+test('CORS headers are only sent for whitelisted origins', async () => {
+    const { app } = setup({ whitelist: ['https://allowed.test'] });
+
+    const allowed = await request(app, '/metadata', {
+        headers: { Origin: 'https://allowed.test' },
+    });
+    assert.equal(allowed.allowOrigin, 'https://allowed.test');
+
+    // No CORS headers rather than an error, which would surface as a 503/500 to every client
+    const denied = await request(app, '/metadata', {
+        headers: { Origin: 'https://evil.test' },
+    });
+    assert.equal(denied.status, 503);
+    assert.equal(denied.allowOrigin, null);
+
+    const preflight = await request(app, '/metadata', {
+        method: 'OPTIONS',
+        headers: { Origin: 'https://evil.test', 'Access-Control-Request-Method': 'GET' },
+    });
+    assert.equal(preflight.allowOrigin, null);
 });

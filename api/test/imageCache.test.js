@@ -15,6 +15,13 @@ function setup() {
     return { imagesDir, cacheDir, cache: new ImageCache({ imagesDir, cacheDir }) };
 }
 
+// prune keeps stale files for a grace period, so expire it and prune again
+async function pruneAfterGrace(cache) {
+    await cache.prune();
+    for (const file of cache.retired.keys()) cache.retired.set(file, 0);
+    await cache.prune();
+}
+
 function writeImage(imagesDir, file, { width = 1000, height = 500, colour = 0 } = {}) {
     return sharp({
         create: { width, height, channels: 3, background: { r: colour, g: 0, b: 0 } },
@@ -59,6 +66,7 @@ test('replacing an image produces new keys and prunes the old files', async () =
 
     const after = cache.list().find((entry) => entry.file === 'a.jpg');
     assert.notEqual(after.key, before.key);
+    await pruneAfterGrace(cache);
     const files = fs.readdirSync(cacheDir);
     assert.ok(!files.some((file) => file.startsWith(`${before.key}.`)));
     assert.ok(files.some((file) => file.startsWith(`${after.key}.`)));
@@ -79,6 +87,7 @@ test('deleting an image removes only its cached files', async () => {
         cache.list().map((entry) => entry.file),
         ['b.jpg']
     );
+    await pruneAfterGrace(cache);
     const files = fs.readdirSync(cacheDir);
     assert.ok(files.length > 0);
     assert.ok(files.every((file) => file.startsWith(`${keptKey}.`)));
@@ -175,4 +184,21 @@ test('keeps the index when the images directory reads as empty', async () => {
 
     assert.deepEqual(cache.list(), before);
     assert.ok(fs.readdirSync(cacheDir).length > 0);
+});
+
+test('prune keeps stale variants until clients have had time to refresh', async () => {
+    const { imagesDir, cacheDir, cache } = setup();
+    await writeImage(imagesDir, 'a.jpg');
+    await cache.refresh();
+    const { key } = cache.list()[0];
+    await writeImage(imagesDir, 'b.jpg');
+
+    fs.unlinkSync(path.join(imagesDir, 'a.jpg'));
+    await cache.refresh();
+
+    const files = fs.readdirSync(cacheDir);
+    assert.ok(files.some((file) => file.startsWith(`${key}.`)));
+
+    await pruneAfterGrace(cache);
+    assert.ok(!fs.readdirSync(cacheDir).some((file) => file.startsWith(`${key}.`)));
 });
