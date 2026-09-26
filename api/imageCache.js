@@ -37,9 +37,13 @@ class ImageCache {
         this.cacheWritable = true;
         try {
             fs.mkdirSync(cacheDir, { recursive: true });
+            // mkdirSync succeeds on an existing directory even if it cannot be written to
+            const probe = path.join(cacheDir, `.writable-${process.pid}`);
+            fs.writeFileSync(probe, '');
+            fs.rmSync(probe, { force: true });
         } catch (error) {
             this.cacheWritable = false;
-            console.log('Unable to create cache directory, serving originals only:', error.message);
+            console.log('Cache directory is not writable, serving originals only:', error.message);
         }
     }
 
@@ -58,9 +62,6 @@ class ImageCache {
             return this.refreshing;
         }
         this.refreshing = this.scan()
-            .then(() => {
-                this.scanned = true;
-            })
             .catch((error) => console.log('Error refreshing image cache:', error))
             .finally(() => {
                 this.refreshing = null;
@@ -111,11 +112,14 @@ class ImageCache {
             }
         }
         this.entries = entries;
+        // Every photo is now listed, so /metadata can answer while variants are still generating
+        this.scanned = true;
 
         if (!this.cacheWritable) return;
 
         // Second pass generates any missing variants, one image at a time
         for (const entry of entries.values()) {
+            if (!this.cacheWritable) return;
             if (entry.placeholder) continue;
             try {
                 await this.generate(entry);
@@ -184,8 +188,17 @@ class ImageCache {
         const buffer = await render();
         // Write then rename so a partially written file is never served
         const temp = `${target}.tmp`;
-        await fsp.writeFile(temp, buffer);
-        await fsp.rename(temp, target);
+        try {
+            await fsp.writeFile(temp, buffer);
+            await fsp.rename(temp, target);
+        } catch (error) {
+            // Nothing will be writable later either, so stop re-encoding on every scan
+            if (['EACCES', 'EPERM', 'EROFS', 'ENOSPC'].includes(error.code)) {
+                this.cacheWritable = false;
+                console.log('Cache directory is not writable, serving originals only:', error.message);
+            }
+            throw error;
+        }
     }
 
     /** Deletes cached files belonging to images that were removed or replaced. */
