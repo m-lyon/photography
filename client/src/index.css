@@ -30,6 +30,12 @@ body {
   min-height: 100vh;
 }
 
+/* Full width from the first render, otherwise the album lays out (and starts loading images) at a
+   tiny shrink-to-fit width before it grows to the viewport */
+#root {
+  width: 100%;
+}
+
 h1 {
   font-size: 3.2em;
   line-height: 1.1;

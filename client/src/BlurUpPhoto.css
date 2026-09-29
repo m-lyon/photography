@@ -1,0 +1,41 @@
+.blur-up {
+  position: relative;
+  overflow: hidden;
+  background-color: rgba(127, 127, 127, 0.15);
+}
+
+.blur-up__placeholder {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(16px);
+  /* Scale up slightly so the blur doesn't fade out at the edges */
+  transform: scale(1.1);
+  transition: opacity 400ms ease-out;
+}
+
+/* Otherwise it stays visible through transparent regions of the loaded image */
+.blur-up__placeholder--hidden {
+  opacity: 0;
+}
+
+.blur-up__image {
+  position: relative;
+  display: block;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  transition: opacity 400ms ease-out;
+}
+
+.blur-up__image--loaded {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .blur-up__image,
+  .blur-up__placeholder {
+    transition: none;
+  }
+}
