@@ -13,6 +13,12 @@ export interface Photo extends Image {
     placeholder?: string;
     /** False while the server is still generating this photo's variants */
     variantsReady?: boolean;
+    /** Subject keywords embedded in the file */
+    tags?: string[];
+    /** Year the photo was taken, if the camera recorded it */
+    year?: number;
+    /** Converted to black & white */
+    monochrome?: boolean;
 }
 
 // The API answers 503 while it is still indexing, and reports variantsReady per photo after that

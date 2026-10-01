@@ -2,6 +2,7 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
+const { readPhotoInfo } = require('./photoInfo');
 
 // Widths (px) of the resized WebP variants generated for each image. Widths at or above
 // the original's width are skipped; the original is always offered as the largest source.
@@ -227,7 +228,8 @@ class ImageCache {
     }
 
     async readEntry(file, key) {
-        const metadata = await sharp(path.join(this.imagesDir, file)).metadata();
+        const filePath = path.join(this.imagesDir, file);
+        const metadata = await sharp(filePath).metadata();
         if (!metadata.width || !metadata.height) throw new Error('missing image dimensions');
         // EXIF orientations 5-8 are rotated 90°, so displayed dimensions are swapped
         const rotated = (metadata.orientation || 1) >= 5;
@@ -236,6 +238,9 @@ class ImageCache {
             key,
             width: rotated ? metadata.height : metadata.width,
             height: rotated ? metadata.width : metadata.height,
+            // Keyed like the variants, so editing tags in place (which changes mtime and size)
+            // is picked up on the next scan
+            ...(await readPhotoInfo(filePath)),
             variants: [],
             placeholder: null,
             failed: false,
