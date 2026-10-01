@@ -116,6 +116,8 @@ test('ignores a filter for a tag no photo has', async () => {
     render(<App />);
     expect(shownPhotos()).toHaveLength(3);
     expect(screen.getByRole('button', { name: 'all' })).toHaveProperty('ariaPressed', 'true');
+    expect(screen.getByRole('button', { name: '2018' })).toHaveProperty('disabled', false);
+    expect(screen.getByRole('button', { name: 'black & white' })).toHaveProperty('disabled', false);
 });
 
 test('the lightbox only pages through the filtered photos', async () => {

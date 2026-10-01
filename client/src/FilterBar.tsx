@@ -41,7 +41,16 @@ function Group({ label, children }: { label: string; children: ReactNode }) {
 }
 
 // Each row scrolls sideways on its own when it is wider than a phone screen
-function Row({ secondary = false, children }: { secondary?: boolean; children: ReactNode }) {
+function Row({
+    secondary = false,
+    activeKey,
+    children,
+}: {
+    secondary?: boolean;
+    /** Changes when the selection does, the only time the active option is brought into view */
+    activeKey: string;
+    children: ReactNode;
+}) {
     const ref = useRef<HTMLDivElement>(null);
 
     // A shared link can select an option that starts off screen, so bring it into view. Only
@@ -54,7 +63,7 @@ function Row({ secondary = false, children }: { secondary?: boolean; children: R
         if (left < 0 || left + active.offsetWidth > row.clientWidth) {
             row.scrollLeft = active.offsetLeft - (row.clientWidth - active.offsetWidth) / 2;
         }
-    });
+    }, [activeKey]);
 
     return (
         <div ref={ref} className={`filter-bar__row${secondary ? ' filter-bar__row--secondary' : ''}`}>
@@ -69,6 +78,7 @@ export function FilterBar({ options, filter, onChange }: FilterBarProps) {
     // A single year has nothing to choose between
     const showYears = years.length > 1;
     if (tags.length === 0 && !showYears && !monochrome) return null;
+    const activeKey = JSON.stringify(filter);
 
     const all = (
         <Group label='All photos'>
@@ -117,20 +127,20 @@ export function FilterBar({ options, filter, onChange }: FilterBarProps) {
         <nav className='filter-bar' aria-label='Filter photos'>
             {subjects ? (
                 <>
-                    <Row>
+                    <Row activeKey={activeKey}>
                         {all}
                         {subjects}
                     </Row>
                     {/* Year and tone refine a subject, so they sit underneath it, quieter */}
                     {(yearGroup || toneGroup) && (
-                        <Row secondary>
+                        <Row secondary activeKey={activeKey}>
                             {yearGroup}
                             {toneGroup}
                         </Row>
                     )}
                 </>
             ) : (
-                <Row>
+                <Row activeKey={activeKey}>
                     {all}
                     {yearGroup}
                     {toneGroup}

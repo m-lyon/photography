@@ -53,6 +53,9 @@ async function readPhotoInfo(filePath) {
         // exifr cannot read GIFs, which have no EXIF to give anyway
         if (!/\.gif$/i.test(filePath)) metadata = (await exifr.parse(filePath, PARSE_OPTIONS)) || {};
     } catch (error) {
+        // I/O errors (EMFILE, EBUSY, a file still being copied) can clear, so fail the read and let
+        // the next scan retry rather than caching the photo with no metadata
+        if (error.code) throw error;
         console.log(`Unable to read tags from ${filePath}:`, error.message);
         metadata = {};
     }

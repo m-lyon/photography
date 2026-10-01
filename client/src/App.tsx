@@ -25,13 +25,16 @@ export default function App() {
     const [selectedSrc, setSelectedSrc] = useState<string | null>(null);
     const allPhotos = useGetPhotos();
     const [requestedFilter, setFilter] = useUrlFilter();
-    // Options are counted against the filter as requested, so a selection nobody has stays disabled
-    const options = useMemo(() => filterOptions(allPhotos, requestedFilter), [allPhotos, requestedFilter]);
     // Until the photos arrive nothing can be checked, so a shared link's filter is kept as given
     const filter = useMemo(
-        () => (allPhotos.length ? effectiveFilter(requestedFilter, options) : requestedFilter),
-        [allPhotos.length, requestedFilter, options]
+        () =>
+            allPhotos.length
+                ? effectiveFilter(requestedFilter, filterOptions(allPhotos, requestedFilter))
+                : requestedFilter,
+        [allPhotos, requestedFilter]
     );
+    // Counted against the filter actually applied, so a dropped selection does not disable the rest
+    const options = useMemo(() => filterOptions(allPhotos, filter), [allPhotos, filter]);
     const photos = useMemo(() => allPhotos.filter((photo) => matches(photo, filter)), [allPhotos, filter]);
     const filterKey = JSON.stringify(filter);
     // Variant URLs can 404 once pruned, and the lightbox has no srcSet fallback; it wants full
