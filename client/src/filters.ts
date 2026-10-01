@@ -85,11 +85,15 @@ export function filterOptions(photos: Photo[], filter: Filter): FilterOptions {
     return { tags, years, monochrome };
 }
 
-/** Drops selections no photo has (a stale shared link, a tag since removed) so they are ignored. */
+/**
+ * Drops selections no photo has (a stale shared link, a tag since removed) so they are ignored, and
+ * a year when the filter bar does not offer years, since it could not be seen or cleared.
+ */
 export function effectiveFilter(filter: Filter, options: FilterOptions): Filter {
+    const yearShown = options.years.length > 1 && options.years.some((option) => option.value === filter.year);
     return {
         tag: options.tags.some((option) => option.value === filter.tag) ? filter.tag : null,
-        year: options.years.some((option) => option.value === filter.year) ? filter.year : null,
+        year: yearShown ? filter.year : null,
         monochrome: filter.monochrome && options.monochrome !== null,
     };
 }

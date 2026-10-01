@@ -22,8 +22,14 @@ const asList = (value) => (value === undefined ? [] : Array.isArray(value) ? val
 /** Keywords from XMP and IPTC merged; a tag that differs only in case is kept once, as first seen. */
 function readTags(metadata) {
     const tags = new Map();
+    const iptc = asList(metadata.iptc?.Keywords).map((value) => String(value).trim());
+    // exifr turns numeric-looking XMP values into numbers ('007' becomes 7), so take the IPTC
+    // spelling of those when there is one
+    const xmp = asList(metadata.dc?.subject).map((value) =>
+        typeof value === 'number' ? (iptc.find((keyword) => keyword && Number(keyword) === value) ?? value) : value
+    );
     // XMP first: it is always UTF-8, while IPTC can be in a legacy encoding
-    for (const value of [...asList(metadata.dc?.subject), ...asList(metadata.iptc?.Keywords)]) {
+    for (const value of [...xmp, ...iptc]) {
         const tag = String(value).trim();
         if (tag && !tags.has(tag.toLowerCase())) tags.set(tag.toLowerCase(), tag);
     }

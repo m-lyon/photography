@@ -51,9 +51,14 @@ test('offers black & white only when it would narrow the photos', () => {
 });
 
 test('drops selections that no photo has', () => {
-    const options = filterOptions([photo({ tags: ['Zoo'], year: 2015 })], NO_FILTER);
+    const options = filterOptions([photo({ tags: ['Zoo'], year: 2015 }), photo({ year: 2018 })], NO_FILTER);
     expect(effectiveFilter({ tag: 'beach', year: 2015, monochrome: true }, options)).toEqual({
         ...NO_FILTER,
         year: 2015,
     });
+});
+
+test('drops a year when there is only one to choose from, since the bar hides it', () => {
+    const options = filterOptions([photo({ year: 2018 }), photo({})], NO_FILTER);
+    expect(effectiveFilter({ ...NO_FILTER, year: 2018 }, options)).toEqual(NO_FILTER);
 });
