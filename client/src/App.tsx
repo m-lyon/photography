@@ -14,14 +14,32 @@ import 'yet-another-react-lightbox/plugins/thumbnails.css';
 // import photos from './photos.ts';
 import { useGetPhotos } from './useGetPhotos.tsx';
 import { BlurUpPhoto } from './BlurUpPhoto.tsx';
+import { FilterBar } from './FilterBar.tsx';
+import { NO_FILTER, effectiveFilter, filterOptions, matches } from './filters.ts';
+import { useUrlFilter } from './useUrlFilter.ts';
+import './Gallery.css';
 
 export default function App() {
     // Tracked by src rather than position: metadata refreshes can add or remove photos while the
     // lightbox is open, which would shift a stored index onto a different photo
     const [selectedSrc, setSelectedSrc] = useState<string | null>(null);
-    const photos = useGetPhotos();
+    const allPhotos = useGetPhotos();
+    const [requestedFilter, setFilter] = useUrlFilter();
+    // Until the photos arrive nothing can be checked, so a shared link's filter is kept as given
+    const filter = useMemo(
+        () =>
+            allPhotos.length
+                ? effectiveFilter(requestedFilter, filterOptions(allPhotos, requestedFilter))
+                : requestedFilter,
+        [allPhotos, requestedFilter]
+    );
+    // Counted against the filter actually applied, so a dropped selection does not disable the rest
+    const options = useMemo(() => filterOptions(allPhotos, filter), [allPhotos, filter]);
+    const photos = useMemo(() => allPhotos.filter((photo) => matches(photo, filter)), [allPhotos, filter]);
+    const filterKey = JSON.stringify(filter);
     // Variant URLs can 404 once pruned, and the lightbox has no srcSet fallback; it wants full
-    // detail anyway, and the original's URL is stable
+    // detail anyway, and the original's URL is stable. Only the filtered photos, so paging through
+    // the lightbox stays within the current selection
     const slides = useMemo(() => photos.map((photo) => ({ ...photo, srcSet: undefined })), [photos]);
     const index = selectedSrc === null ? -1 : slides.findIndex((slide) => slide.src === selectedSrc);
 
@@ -32,15 +50,29 @@ export default function App() {
 
     return (
         <>
-            <header style={{ visibility: 'hidden' }}>Photos</header>
-            <PhotoAlbum
-                photos={photos}
-                layout='rows'
-                onClick={({ photo }) => setSelectedSrc(photo.src)}
-                spacing={10}
-                renderPhoto={(props) => <BlurUpPhoto {...props} />}
-                componentsProps={{ imageProps: { loading: 'lazy', decoding: 'async' } }}
-            />
+            <header className='site-header'>
+                <FilterBar options={options} filter={filter} onChange={setFilter} />
+            </header>
+            {/* Keyed on the filter so each new selection fades in instead of re-flowing in place */}
+            <main className='gallery' key={filterKey}>
+                {photos.length === 0 && allPhotos.length > 0 ? (
+                    <p className='gallery__empty'>
+                        No photos match this combination.{' '}
+                        <button type='button' onClick={() => setFilter(NO_FILTER)}>
+                            Show all
+                        </button>
+                    </p>
+                ) : (
+                    <PhotoAlbum
+                        photos={photos}
+                        layout='rows'
+                        onClick={({ photo }) => setSelectedSrc(photo.src)}
+                        spacing={10}
+                        renderPhoto={(props) => <BlurUpPhoto {...props} />}
+                        componentsProps={{ imageProps: { loading: 'lazy', decoding: 'async' } }}
+                    />
+                )}
+            </main>
             <Lightbox
                 slides={slides}
                 open={index >= 0}

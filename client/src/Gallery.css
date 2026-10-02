@@ -1,0 +1,41 @@
+/* Each change of filter re-lays out the album, so ease the new set in rather than snapping */
+.gallery {
+  animation: gallery-in 500ms cubic-bezier(0.2, 0, 0, 1);
+}
+
+@keyframes gallery-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+.gallery__empty {
+  padding: 4rem 16px;
+  text-align: center;
+  font-size: 0.8125rem;
+  letter-spacing: 0.08em;
+  opacity: 0.5;
+}
+
+.gallery__empty button {
+  padding: 0;
+  border: none;
+  background: none;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .gallery {
+    animation: none;
+  }
+}
+
+/* Keeps the gap above the album when there is nothing to filter by */
+.site-header {
+  min-height: 1.5rem;
+}

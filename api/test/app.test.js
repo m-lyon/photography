@@ -193,3 +193,32 @@ test('CORS headers are only sent for whitelisted origins', async () => {
     });
     assert.equal(preflight.allowOrigin, null);
 });
+
+test('metadata includes the keywords, capture year and black & white flag of each photo', async () => {
+    const { imagesDir, cache, app } = setup();
+    const xmp = `<x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+        <rdf:Description rdf:about="" xmlns:dc="http://purl.org/dc/elements/1.1/"
+            xmlns:crs="http://ns.adobe.com/camera-raw-settings/1.0/" crs:ConvertToGrayscale="True">
+            <dc:subject><rdf:Bag><rdf:li>Wildlife</rdf:li><rdf:li>Zoo</rdf:li><rdf:li>wildlife</rdf:li></rdf:Bag></dc:subject>
+        </rdf:Description></rdf:RDF></x:xmpmeta>`;
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .withExif({ IFD2: { DateTimeOriginal: '2018:12:31 23:30:00' } })
+        .withXmp(xmp)
+        .jpeg()
+        .toFile(path.join(imagesDir, 'tagged.jpg'));
+    await sharp({ create: { width: 1000, height: 500, channels: 3, background: { r: 0, g: 0, b: 0 } } })
+        .jpeg()
+        .toFile(path.join(imagesDir, 'untagged.jpg'));
+    await cache.refresh();
+
+    const [tagged, untagged] = JSON.parse((await get(app, '/metadata')).body);
+    // A keyword repeated in a different case is listed once
+    assert.deepEqual(tagged.tags, ['Wildlife', 'Zoo']);
+    // Taken in the camera's local time, so not shifted into another year by the server's zone
+    assert.equal(tagged.year, 2018);
+    assert.equal(tagged.monochrome, true);
+
+    assert.deepEqual(untagged.tags, []);
+    assert.equal(untagged.year, undefined);
+    assert.equal(untagged.monochrome, false);
+});

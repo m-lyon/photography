@@ -25,7 +25,8 @@ a:hover {
 body {
   margin: 0;
   display: flex;
-  place-items: center;
+  /* Top-aligned, so a filter that leaves only a few photos does not float them mid-screen */
+  align-items: flex-start;
   min-width: 320px;
   min-height: 100vh;
 }
