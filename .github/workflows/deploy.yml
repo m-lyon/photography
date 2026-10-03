@@ -9,6 +9,11 @@ on:
 permissions:
   contents: read
 
+# A new push to a PR cancels its in-flight run; runs on main always finish
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 env:
   REMOTE_USER: deploy-photography
   API_TARGET: /srv/photography/
@@ -16,7 +21,10 @@ env:
   PUBLIC_URL: https://photos.mattlyon.co.uk
 
 jobs:
+  # Required to pass before a PR can merge into main (ruleset, branch must be up to date),
+  # so main is not re-tested on push.
   test:
+    if: github.event_name == 'pull_request'
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout code
@@ -42,7 +50,6 @@ jobs:
           npm run lint
 
   deploy:
-    needs: test
     # One group for the deploy target, so two runs never touch the server at once
     concurrency:
       group: deploy-production
@@ -50,7 +57,7 @@ jobs:
     # Match the server (Ubuntu 22.04) so native modules such as sharp link against the same glibc.
     runs-on: ubuntu-22.04
     environment: production
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
     permissions:
       contents: read
       id-token: write # lets the Tailscale action authenticate with GitHub's OIDC token
